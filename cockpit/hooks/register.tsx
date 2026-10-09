@@ -2215,8 +2215,8 @@ async function drawTree($: EngineInterface, e: any): Promise<unknown> {
     }
 
     const rowsProps: RowsProps = { rows: specs, active: t.cursor, activeBg: theme.selection, hoverBg: faint(theme.selection), tones: SHIMMER, pointer, ...(bar ? { bar } : {}) }
-    const { Client } = $.ui.resolve(e)
-    const rowsClient = <Client module="./rows.tsx" key="rows" props={rowsProps} />
+    const surfaceUi = $.ui.resolve(e)
+    const rowsClient = <surfaceUi.Client module="./rows.tsx" key="rows" props={rowsProps} />
     return (
       <Box flexDirection="column" minHeight={Math.max(1, e.props.scroll?.bodyRows ?? 1)} backgroundColor={theme.bg || undefined}>
         <Box flexDirection="row">
