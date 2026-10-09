@@ -2053,7 +2053,7 @@ async function drawTree($: EngineInterface, e: any): Promise<unknown> {
       return <Empty />
     }
     const unicode = glyphSetting === 'plain' || (glyphSetting === 'auto' && (noNerd || e.surface === 'desktop'))
-    const { Box, Text, Button, Input, Client } = $.ui.resolve(e)
+    const { Box, Text, Button, Input } = $.ui.resolve(e)
     const t = await get($)
     const theme: Theme = (await $.state.get(THEME)).value ?? DEFAULT_THEME
     const now = await $.clock.now()
@@ -2215,6 +2215,7 @@ async function drawTree($: EngineInterface, e: any): Promise<unknown> {
     }
 
     const rowsProps: RowsProps = { rows: specs, active: t.cursor, activeBg: theme.selection, hoverBg: faint(theme.selection), tones: SHIMMER, pointer, ...(bar ? { bar } : {}) }
+    const { Client } = $.ui.resolve(e)
     const rowsClient = Client({ key: 'rows', module: './rows.tsx', props: rowsProps })
     return (
       <Box flexDirection="column" minHeight={Math.max(1, e.props.scroll?.bodyRows ?? 1)} backgroundColor={theme.bg || undefined}>
