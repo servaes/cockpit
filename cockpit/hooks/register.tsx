@@ -997,10 +997,10 @@ function timeLeft(iso: string, now: number): string {
   if (Number.isNaN(ms) || ms <= 0) return ''
   const mins = Math.round(ms / 60_000)
   const d = Math.floor(mins / 1440)
-  const h = Math.floor((mins % 1440) / 60)
+  const hr = Math.floor((mins % 1440) / 60)
   const m = mins % 60
-  if (d) return h ? `${d}d${h}h` : `${d}d`
-  if (h) return m ? `${h}h${m}m` : `${h}h`
+  if (d) return hr ? `${d}d${hr}h` : `${d}d`
+  if (hr) return m ? `${hr}h${m}m` : `${hr}h`
   return `${Math.max(1, m)}m`
 }
 
@@ -1030,10 +1030,10 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 function when(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
-  const h = d.getHours()
+  const hr = d.getHours()
   const m = String(d.getMinutes()).padStart(2, '0')
-  const h12 = h % 12 === 0 ? 12 : h % 12
-  return `${DAYS[d.getDay()]} ${h12}:${m} ${h < 12 ? 'AM' : 'PM'}`
+  const h12 = hr % 12 === 0 ? 12 : hr % 12
+  return `${DAYS[d.getDay()]} ${h12}:${m} ${hr < 12 ? 'AM' : 'PM'}`
 }
 
 // --- formatting
@@ -2552,10 +2552,10 @@ const fmtCost = (usd: number): string => `$${usd < 10 ? usd.toFixed(2) : usd.toF
 
 const fmtTime = (ms: number): string => {
   const s = Math.max(0, Math.round(ms / 1000))
-  const h = Math.floor(s / 3600)
+  const hr = Math.floor(s / 3600)
   const m = Math.floor((s % 3600) / 60)
   const ss = String(s % 60).padStart(2, '0')
-  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`
+  return hr ? `${hr}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`
 }
 
 const elapsed = (a: AgentRun, at: number): number => (a.endedAt ?? Math.max(at, a.startedAt)) - a.startedAt
@@ -2592,7 +2592,7 @@ const INK = '#1F1E1D'
 
 // `cls` puts a pixel in a named group: `bd` (the default) is the body and its
 // costume, `la`/`lb` the leg pairs, anything else a prop with its own motion.
-type Fill = (x: number, y: number, w: number, h: number, c: string, cls?: string) => void
+type Fill = (x: number, y: number, w: number, ht: number, c: string, cls?: string) => void
 
 const stampPixels = (f: Fill, x: number, y: number, rows: string[], map: Record<string, string>, cls?: string): void =>
   rows.forEach((row, dy) => [...row].forEach((ch, dx) => map[ch] && f(x + dx, y + dy, 1, 1, map[ch] ?? '', cls)))
@@ -2659,7 +2659,7 @@ const COSTUMES: Record<string, (f: Fill, t: string) => void> = {
   // Careful: engineer in a hard hat; the wrench turns a bolt.
   careful: (f, t) => {
     crabBody(f)
-    stampPixels(f, 6, 4, ['.....yyyyyyyy.....', '...yyyyyhhyyyyy...', '..yyyyyyhhyyyyyy..', '..yyyyyyhhyyyyyy..', '.yyyyyyyhhyyyyyyy.', 'dddddddddddddddddd'], { y: '#F5C542', h: '#FBE08A', d: '#C99A1E' })
+    stampPixels(f, 6, 4, ['.....yyyyyyyy.....', '...yyyyyllyyyyy...', '..yyyyyyllyyyyyy..', '..yyyyyyllyyyyyy..', '.yyyyyyyllyyyyyyy.', 'dddddddddddddddddd'], { y: '#F5C542', l: '#FBE08A', d: '#C99A1E' })
     f(13, 5, 4, 2, t)
     stampPixels(f, 0, 10, ['.s.s', 'sss.', '.s..', '.s..'], { s: '#8E929A' }, 'it')
   },
@@ -2694,9 +2694,9 @@ const CRAB_SCALE = 1.1
 // legs stay outside it and step on their own.
 const crab = (x: number, y: number, costume: string, dim = false, isWalking = false, scale = CRAB_SCALE): string => {
   const groups = new Map<string, string[]>([['bd', []]])
-  const f: Fill = (cx, cy, w, h, c, cls = 'bd') => {
+  const f: Fill = (cx, cy, w, ht, c, cls = 'bd') => {
     if (!groups.has(cls)) groups.set(cls, [])
-    groups.get(cls)?.push(`<rect x="${cx}" y="${cy}" width="${w}" height="${h}" fill="${c}"/>`)
+    groups.get(cls)?.push(`<rect x="${cx}" y="${cy}" width="${w}" height="${ht}" fill="${c}"/>`)
   }
   const draw = COSTUMES[costume] ?? ((g: Fill) => crabBody(g))
   draw(f, colorOf(costume))
@@ -4507,7 +4507,7 @@ function needsView(waiting: boolean, heldNow: any, hist: Held[]): { level: Level
     }
   }
   const open = rows.length
-  const solved = needs.solved + hist.filter(h => h.outcome !== 'held').length
+  const solved = needs.solved + hist.filter(x => x.outcome !== 'held').length
   if (open === 0) return { level: 'fine', sub: 'fine', subColor: DONE, phrase: `nothing waiting${solved ? ` · ${solved} solved this chat` : ' · a held command, a key to paste or a DNS record lands here'}`, rows, paste, buttons }
   const resumes = waiting ? 'Proceed or Cancel below' : ship.state === 'held' ? 'resumes the moment you press Done' : 'the rest is quiet'
   return { level: 'act', sub: 'act now', subColor: 'red', phrase: `${open} waiting · ${resumes}`, rows, paste, buttons }
@@ -5735,10 +5735,10 @@ function cacheWindow(text: string): number | null {
 
 function cacheDuration(ms: number): string {
   const total = Math.max(0, Math.round(ms / 60_000))
-  const h = Math.floor(total / 60)
+  const hr = Math.floor(total / 60)
   const m = total % 60
-  if (h >= 48) return `${Math.floor(h / 24)}d ${h % 24}h`
-  return h > 0 ? `${h}h${String(m).padStart(2, '0')}m` : `${m}m`
+  if (hr >= 48) return `${Math.floor(hr / 24)}d ${hr % 24}h`
+  return hr > 0 ? `${hr}h${String(m).padStart(2, '0')}m` : `${m}m`
 }
 
 /** The warm hour as a clock that visibly runs down: `47:12`, minutes and seconds. */
