@@ -211,8 +211,8 @@ for (const surface of SURFACES) {
     expect(rows).toContain('README.md')
     expect(rows).toContain('notes.md')
     // session + hint + week + hint + blank + rule + THIS CHAT + rule + context + hint + rule + cache (no size line before a reply) + 2 buttons + rule
-    // + progress + rule + 1 goal + rule + agents head + 2 agents + rule + caution + rule + files head + replay = 27 rows, so the tree keeps 13
-    if (surface === 'terminal') expect(text).toContain('"minHeight":8')
+    // + progress + rule + 1 goal + rule + agents head + 2 agents + rule + crew chats + rule + caution + rule + files head + replay = 29 rows, so the tree keeps 11
+    if (surface === 'terminal') expect(text).toContain('"minHeight":6')
     // the desktop's cards are measured in pixels: the tree still keeps its floor of five rows
     else expect(Number(/"minHeight":(\d+)/.exec(text)?.[1])).toBeGreaterThanOrEqual(5)
     expect(text).not.toContain('Tree buttons')
@@ -233,8 +233,8 @@ for (const surface of SURFACES) {
     expect(text).toContain("↳ No reading yet. It shows after Claude's first reply.")
     expect(text).not.toContain('of the week gone')
     // usage none + blank + rule + THIS CHAT + rule + context + hint + rule + cache + 2 buttons + rule + progress + rule + goals
-    // + the Create goal box + rule + agents + rule + caution + rule + files head + replay = 23 rows, so the tree keeps 17
-    if (surface === 'terminal') expect(text).toContain('"minHeight":12')
+    // + the Create goal box + rule + agents + rule + crew chats + rule + caution + rule + files head + replay = 25 rows, so the tree keeps 15
+    if (surface === 'terminal') expect(text).toContain('"minHeight":10')
     else expect(Number(/"minHeight":(\d+)/.exec(text)?.[1])).toBeGreaterThanOrEqual(5)
     expect(text).toContain('what does done look like?')
   })
@@ -387,6 +387,29 @@ test('holds a risky command inside the Cockpit until Cancel is pressed, then lis
   text = JSON.stringify(await ui.drawn())
   expect(text).not.toContain('Held: rm -rf')
   expect(text).toContain('nothing waiting · 1 solved this chat')
+})
+
+test("a here-document's body is the command's input, not commands: rm -rf inside one is not held", async ($, on) => {
+  let release: () => void = () => undefined
+  const gate = new Promise<void>(r => { release = r })
+  const clock = world(on, { gate: () => gate })
+  let ran = 0
+  on('tool.call', { tool: 'Bash' }, async () => { ran += 1; return { result: { stdout: 'ran', stderr: '', exitCode: 0 } } as never })
+  await $.session.start(start)
+  await clock.settle()
+  const script = "python3 -I - hooks/x.ts <<'EOF'\nRISKY = r'\\b(rebase|deploy)\\b|rm -rf'\nprint('ok')\nEOF\necho done"
+  const r = await $.tool.call({ tool: 'Bash', command: script } as never)
+  expect((r as { deny?: string }).deny).toBeUndefined()
+  expect(ran).toBe(1)
+  const ui = await mount($, 'desktop')
+  expect(JSON.stringify(await ui.drawn())).not.toContain('Held:')
+  // the same words outside a here-document are still a risk
+  const held = $.tool.call({ tool: 'Bash', command: 'rm -rf build' } as never)
+  await clock.settle()
+  expect(JSON.stringify(await ui.drawn())).toContain('Held: rm -rf')
+  await ui.press({ key: 'blast:cancel' })
+  release()
+  await held
 })
 
 test('/cockpit <path> pins another folder in the same pane', async ($, on) => {
@@ -1033,6 +1056,47 @@ test('the crew row stays above the prompt, typed or not: the draft lights the ro
   // the Codex switch without a codex command only explains itself
   await ui.press({ key: 'Codex: not installed' })
   expect(toasts.at(-1)).toContain('Codex is not installed here')
+})
+
+test('New chat opens a real chat on the draft and the board follows it: found by its marker in the transcript, then its model, cost and last words', async ($, on) => {
+  const draft = { text: '' }
+  const ran: string[][] = []
+  const toasts: string[] = []
+  const files: Record<string, string> = {}
+  const dirs: Dirs = { ...DIRS, '/home/t/.claude/projects': [['-tmp-project', 'dir']], '/home/t/.claude/projects/-tmp-project': [['s9.jsonl', 'file']] }
+  const clock = world(on, { usage: BIG, draft, ran, toasts, files, dirs })
+  await $.session.start(start)
+  await clock.settle()
+  await $.turn.complete(turn())
+  const ui = await band($, 'desktop')
+  const board = await mount($, 'desktop')
+  await clock.settle()
+  expect(JSON.stringify(await board.drawn())).toContain('Crew chats none yet')
+  draft.text = 'implementa o onboarding inteiro, com telas e e-mails'
+  await clock.advance(2000)
+  await ui.press({ key: 'New chat' })
+  await clock.settle()
+  // no handoff note could be written in this world (nothing to fork), so the chat opens on the draft alone, with its marker
+  const url = decodeURIComponent(ran.find(argv => (argv.at(-1) ?? '').startsWith('claude://code/new?'))!.at(-1)!)
+  const id = /\[crew-chat ([a-z0-9]+)\]/.exec(url)?.[1]
+  expect(id).toBeDefined()
+  expect(url).toContain(`Project folder: ${ROOT}.`)
+  expect(toasts.at(-1)).toContain('approve it in the app')
+  let text = JSON.stringify(await board.drawn())
+  expect(text).toContain('implementa o onboarding inteiro')
+  expect(text).toContain('waiting for your Enter in the app')
+  // the chat's transcript appears with the marker in its first message: the board binds it and reads its tail
+  files['/home/t/.claude/projects/-tmp-project/s9.jsonl'] = [
+    JSON.stringify({ type: 'user', message: { role: 'user', content: `Project folder: ${ROOT}. implementa o onboarding inteiro\n\n[crew-chat ${id}]` } }),
+    JSON.stringify({ type: 'assistant', message: { role: 'assistant', model: 'claude-sonnet-5-5', content: [{ type: 'text', text: 'Onboarding done: three screens and two e-mails.' }], usage: { input_tokens: 1000, cache_read_input_tokens: 20000, cache_creation_input_tokens: 0, output_tokens: 500 } } }),
+  ].join('\n')
+  await clock.advance(10_000)
+  await clock.settle()
+  text = JSON.stringify(await board.drawn())
+  expect(text).toContain('Sonnet 5.5')
+  expect(text).toContain('Onboarding done: three screens and two e-mails.')
+  expect(text).toMatch(/≈ \$0\.0\d/)
+  expect(text).toContain('1 open, 1 working')
 })
 
 test('next steps and the estimate share one box above the prompt: the suggestions, then what the typed message costs', async ($, on) => {

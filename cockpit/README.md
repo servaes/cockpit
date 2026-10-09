@@ -179,9 +179,15 @@ with a risky command, even inside quoted text, is held.
   rather than switching here and losing the cache; mechanical work and research go to a worker;
   a long new build in a chat past 80k tokens goes to a new chat. A button only rewrites the
   draft (Helper puts a delegate-to-one-cheap-subagent ask before it, Crew puts `/cockpit:crew`,
-  Plan the plan-first ask, Here takes any of those off) or, for New chat, opens the app's
-  new-chat link on the draft naming the project folder: you approve the new chat in the app and
-  press Enter there. Nothing is sent. The Codex switch (off by default, stored under `crew.codex`)
+  Plan the plan-first ask, Here takes any of those off) or, for New chat, writes this chat's
+  handoff note (the fresh one when there is one, else one fork over the warm cache) and opens
+  the app's new-chat link on the draft, naming the project folder and the note to read first:
+  you approve the new chat in the app and press Enter there. Nothing is sent. At most ten crew
+  chats at a time.
+- **Crew chats**, a card under Agents: every chat New chat opened, followed through the
+  transcript the app writes for it (found by a marker in its first message): waiting for your
+  Enter, working or finished, its model, an estimated cost and its last words. Finished chats
+  stay until you press Forget finished chats; they stay in the app's sidebar either way. The Codex switch (off by default, stored under `crew.codex`)
   only turns on where a `codex` command is installed; otherwise it says so.
 - **Above the prompt, while you type**, in the same box under the crew row and the next steps: what the message will cost if sent, at API list prices:
   `✎ this message ≈ $0.15–$0.60 if API · small edit (~6 calls, first guess) · ~180 tokens typed`.
