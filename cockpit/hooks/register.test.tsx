@@ -40,7 +40,7 @@ const DIRS: Dirs = {
 }
 
 type ForkAnswer = { text?: string; read: number; write: number; out?: number }
-type World = { usage?: unknown; dirs?: Dirs; files?: Record<string, string>; opens?: unknown[]; toasts?: string[]; logs?: string[]; writes?: { path: string; text: string }[]; copied?: string[]; entered?: string[]; forks?: string[]; forkAnswers?: ForkAnswer[]; ran?: string[][]; gate?: () => Promise<void>; agents?: unknown[]; flow?: unknown; pricing?: string; draft?: { text: string }; store?: Record<string, unknown>; model?: { id: string }; fills?: string[] }
+type World = { usage?: unknown; dirs?: Dirs; files?: Record<string, string>; opens?: unknown[]; toasts?: string[]; logs?: string[]; writes?: { path: string; text: string }[]; copied?: string[]; entered?: string[]; forks?: string[]; forkAnswers?: ForkAnswer[]; ran?: string[][]; gate?: () => Promise<void>; agents?: unknown[]; flow?: unknown; pricing?: string; draft?: { text: string }; store?: Record<string, unknown>; model?: { id: string }; fills?: string[]; surfaces?: string[] }
 
 // The world beneath the mod: the session's figures, a small project on disk, no git repo, no fonts, no theme.
 function world(on: On, w: World = {}) {
@@ -60,6 +60,8 @@ function world(on: On, w: World = {}) {
   })
   on('session.usage', async () => ({ value: usage }) as never)
   on('session.id', async () => ({ value: 's1' }) as never)
+  on('session.surfaces', async () => ({ value: w.surfaces ?? ['terminal'] }) as never)
+  on('session.attach', async (_$, e) => ({ clientId: (e as { clientId: string }).clientId }) as never)
   on('session.cwd', async () => ({ value: ROOT }) as never)
   on('settings.read', async () => ({ value: {} }) as never)
   on('ui.toast', async (_$, e) => {
@@ -399,6 +401,37 @@ test('/cockpit <path> pins another folder in the same pane', async ($, on) => {
   const ui = await mount($, 'desktop')
   await clock.settle()
   expect(JSON.stringify(await ui.drawn({ in: 'rows' }))).toContain('a.ts')
+})
+
+test('/cockpit opens the board in the desktop app, which has no fullscreen layout to ask for', async ($, on) => {
+  const opens: { id?: string }[] = []
+  const clock = world(on, { opens, surfaces: ['desktop'] })
+  await $.session.start(start)
+  await clock.settle()
+  const before = opens.length
+  const r = await $.command.run({ command: 'cockpit', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } } as never)
+  await clock.settle()
+  expect(String((r as { text?: string }).text)).toContain('Cockpit Board on')
+  expect(opens.slice(before).some(o => o.id === 'cockpit')).toBe(true)
+})
+
+test('/cockpit says plainly when the session has no screen to draw on', async ($, on) => {
+  const clock = world(on, { surfaces: [] })
+  await $.session.start({ ...start, surface: null } as never)
+  await clock.settle()
+  const r = await $.command.run({ command: 'cockpit', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } } as never)
+  expect(String((r as { text?: string }).text)).toContain('no screen attached')
+})
+
+test('the board opens when the desktop app attaches to a session that began without it', async ($, on) => {
+  const opens: { id?: string }[] = []
+  const clock = world(on, { opens, surfaces: [] })
+  await $.session.start({ ...start, surface: null } as never)
+  await clock.settle()
+  const before = opens.length
+  await $.session.attach({ surface: 'desktop', clientId: 'desktop:default' } as never)
+  await clock.settle()
+  expect(opens.slice(before).some(o => o.id === 'cockpit')).toBe(true)
 })
 
 test('the crew progress tool fills the board, never the band above the prompt', async ($, on) => {

@@ -11,7 +11,7 @@
       "name": "cockpit",
       "source": "./cockpit",
       "description": "Cockpit Board: one side panel with the account's usage windows, this chat's context and cache (warm or cold, the cold price, Keep warm, the Handoff note and Resume), live progress with a time estimate, goals with a Create goal box, agents, a Needs you section for everything that waits on you (held risky commands, hand-offs, the wrong-folder nudge), a CHANGES zone with the changed files, See code changes, See visual changes (the screen before and after) and Ship (six steps to live), and the file tree; the crew skill (/cockpit:crew, which runs a big task with a crew of worker agents), the goal meter, the agents and cache-tax ship inside it, all in one pane; above the prompt, what the message being typed will cost.",
-      "version": "3.10.3"
+      "version": "3.10.4"
     }
   ]
 }

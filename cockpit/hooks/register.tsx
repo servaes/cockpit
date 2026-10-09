@@ -1049,6 +1049,7 @@ const TREE = { plugin: 'cockpit', key: 'tree' } as const
 const THEME = { plugin: 'cockpit', key: 'theme' } as const
 const ACTIVITY = { plugin: 'cockpit', key: 'activity' } as const
 const PANE = 'cockpit'
+const NO_SURFACE_TEXT = 'The Cockpit Board is a side panel, and this session has no screen attached to draw it on. Open this chat in the Claude desktop app (Code tab) or run claude in a terminal, then type /cockpit again.'
 const SHIMMER = Object.fromEntries(Object.entries(TONES).map(([k, v]) => [k, { bright: v.bright, dim: v.dim }]))
 const BRANCH_ROW = '#branch'
 const FLASH_MS = 2700
@@ -3659,6 +3660,13 @@ export const register: Register = (on, options) => {
     return r
   })
 
+  on('session.attach', { surface: 'desktop' }, async ($, e, next) => {
+    const r = await next(e)
+    noDock = false
+    await showBoard($)
+    return r
+  })
+
   on('tool.call', { tool: 'Bash' }, ($, e, next) => guardBash($, e, next)).catch(($, e, next) =>
     next.called ? next(e) : { deny: 'Cockpit hit an error while holding this command, so it did not run. Do not retry it unless the user asks you to.' },
   )
@@ -3930,8 +3938,11 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: ['cockpit', 'board', 'filetree'] }, async ($, e) => {
-    if (!e.presentation.isFullscreen) return { text: 'The Cockpit Board shows in the sidebar, which needs the fullscreen layout. Run /tui fullscreen, then /cockpit.' }
-    if (e.presentation.columns < 110) return { text: 'The Cockpit Board shows in the sidebar, which needs a terminal at least 110 columns wide. Widen it, then run /cockpit.' }
+    const surfaces = await $.session.surfaces()
+    const onDesktop = surfaces.includes('desktop')
+    if (!onDesktop && !surfaces.includes('terminal')) return { text: NO_SURFACE_TEXT }
+    if (!onDesktop && !e.presentation.isFullscreen) return { text: 'The Cockpit Board shows in the sidebar, which needs the fullscreen layout. Run /tui fullscreen, then /cockpit.' }
+    if (!onDesktop && e.presentation.columns < 110) return { text: 'The Cockpit Board shows in the sidebar, which needs a terminal at least 110 columns wide. Widen it, then run /cockpit.' }
     noDock = false
     const arg = (e.args ?? '').trim()
     const cwd = await cwdOf($)
