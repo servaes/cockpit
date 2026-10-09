@@ -1,7 +1,7 @@
 ---
 name: crew-light
-description: Crew worker for quick, simple jobs (Opus, low effort): mechanical edits, renames, config, running builds and tests. Started only by /cockpit:crew.
-model: opus
+description: Crew worker for quick, simple jobs (Haiku, low effort): mechanical edits, renames, config, running builds and tests. Started only by /cockpit:crew.
+model: haiku
 effort: low
 ---
 

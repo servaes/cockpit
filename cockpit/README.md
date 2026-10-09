@@ -72,10 +72,10 @@ in, each part separated by a thin line. Each section carries an icon and a colou
      `~/.claude/mods-data/cockpit/handoff/<session>.md` and copies it. It also writes
      itself 49 minutes after the last reply on a chat over 50k tokens, while the cache
      is still warm, so it costs a read, not a re-write, and the hour starts over
-     (`/handoff auto off` to stop that; `/handoff` writes one now).
-   - **▶ Resume handoff** appears in a fresh chat whose folder has a note from an
-     earlier chat (newest, unused, under 14 days old): it sends the note as the first
-     message, which is the cheap way back after a long break.
+     (`/handoff auto off` to stop that).
+   - **`/handoff`** prints the note in the chat as markdown and copies it, to paste as a
+     new chat's first message. When the saved note still covers the last reply (the
+     automatic one, say), it shows that one without a new fork, so it costs nothing.
 
    The guard: a plain message typed into a chat over 50k tokens whose cache went cold
    is dropped once with its price; send it again to pay it, and keepwarm then holds the
@@ -169,7 +169,21 @@ with a risky command, even inside quoted text, is held.
   prompts above the input (`next:`, press 1, 2 or 3 to put one in the prompt box as a draft, 0 to
   dismiss; the first is also the Tab ghost text). Settings: `minAnswerChars`, `suggestSkills`.
   The separate `next-steps@claude-community` plugin is disabled on purpose (it would draw twice).
-- **Above the prompt, while you type**, in the same box under the next steps: what the message will cost if sent, at API list prices:
+- **The crew row, always above the prompt** (`⚑ Crew`, typed or not): Here, Helper, New chat,
+  Crew and Plan, plus the Codex switch. While you type, the route the draft calls for is lit and
+  a line says the lane and why: the kind of work (hard-to-undo, architecture, image, video,
+  chart, document, UI design, research, mechanical, build, fix, quick) sets the model and effort
+  it deserves and the specialist to use, then the place (`→ Plan · Fable high · Codex 2nd
+  opinion (hard to undo: plan first, then run)`, `→ Here · Sonnet medium · dataviz (a chart)`).
+  A rebase always plans first; a decision in a chat below Fable points to a new chat on Fable
+  rather than switching here and losing the cache; mechanical work and research go to a worker;
+  a long new build in a chat past 80k tokens goes to a new chat. A button only rewrites the
+  draft (Helper puts a delegate-to-one-cheap-subagent ask before it, Crew puts `/cockpit:crew`,
+  Plan the plan-first ask, Here takes any of those off) or, for New chat, opens the app's
+  new-chat link on the draft naming the project folder: you approve the new chat in the app and
+  press Enter there. Nothing is sent. The Codex switch (off by default, stored under `crew.codex`)
+  only turns on where a `codex` command is installed; otherwise it says so.
+- **Above the prompt, while you type**, in the same box under the crew row and the next steps: what the message will cost if sent, at API list prices:
   `✎ this message ≈ $0.15–$0.60 if API · small edit (~6 calls, first guess) · ~180 tokens typed`.
   The floor is certain (the context read from the cache, or written again with a `⚠` when the
   cache is cold, plus what was typed); the rest is the work the text asks for, read as a profile

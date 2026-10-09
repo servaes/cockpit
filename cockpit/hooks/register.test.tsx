@@ -489,7 +489,7 @@ test('leaves other panes alone', async ($, on) => {
   expect(text).not.toContain('Session')
 })
 
-// --- the cache block: the row above Context, the guard, keepwarm, the handoff note and Resume
+// --- the cache block: the row above Context, the guard, keepwarm and the handoff note
 
 const MIN = 60_000
 const BIG = { ...USAGE, context: { tokens: 200_000, window: 1_000_000, percent: 20 } }
@@ -640,7 +640,7 @@ test('the Handoff button writes the note now, copies it, and the cold guard then
   expect(toasts.at(-1)).toContain('Handoff note saved and copied (200k read, $0.05)')
   await skip(clock, 3 * H)
   const dropped = await $.prompt.submit(prompt('hi'))
-  expect(String((dropped as { drop?: string }).drop)).toContain('press ▶ Resume handoff on its board')
+  expect(String((dropped as { drop?: string }).drop)).toContain('run /handoff and paste this chat\'s note')
 })
 
 test('no automatic handoff on a small chat, and none once the cache is already cold', async ($, on) => {
@@ -655,26 +655,25 @@ test('no automatic handoff on a small chat, and none once the cache is already c
   expect(logs.some(l => l.includes('handoff'))).toBe(false)
 })
 
-test('a note another chat left for this folder shows Resume, which sends it as the first message', async ($, on) => {
-  const entered: string[] = []
-  const toasts: string[] = []
-  const note = `---\ncwd: ${ROOT}\nsession: old\nsavedAt: ${new Date(NOW_MS - H).toISOString()}\nauto: true\nmodel: claude-fable-5-1\ntokens: 300000\n---\n## Goal\n- Ship the landing page\n## Next\n- Wire the form\n`
-  const clock = world(on, { entered, toasts, dirs: { ...DIRS, [HANDOFF_DIR]: [['old.md', 'file'], ['s1.md', 'file']] }, files: { [`${HANDOFF_DIR}/old.md`]: note, [`${HANDOFF_DIR}/s1.md`]: 'not a note' } })
+test('/handoff prints the note in the chat, copied, and reuses one that still covers the last reply', { timeoutMs: 20_000 }, async ($, on) => {
+  const forks: string[] = []
+  const copied: string[] = []
+  const clock = world(on, { usage: BIG, forks, copied, forkAnswers: [{ text: '## Goal\n- Ship it\n## Next\n- Deploy', read: 200_000, write: 0 }] })
   await $.session.start(start)
   await clock.settle()
+  await $.turn.complete(turn())
   const ui = await mount($, 'desktop')
   await clock.settle()
-  let text = JSON.stringify(await ui.drawn())
-  expect(text).toContain('▶ Resume handoff')
-  expect(text).toContain("sends it as this chat's first message")
-  await ui.press({ key: 'cache:resume' })
-  await clock.settle()
-  expect(entered.length).toBe(1)
-  expect(entered[0]).toContain('Continue from this handoff note')
-  expect(entered[0]).toContain('## Goal\n- Ship the landing page')
-  expect(toasts.at(-1)).toContain('sent as the first message')
-  text = JSON.stringify(await ui.drawn())
-  expect(text).not.toContain('▶ Resume handoff')
+  expect(JSON.stringify(await ui.drawn())).not.toContain('Resume')
+  const run = () => $.command.run({ command: 'handoff', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } } as never)
+  let shown = String(((await run()) as { text?: string }).text)
+  expect(shown).toContain("Paste it as a new chat's first message")
+  expect(shown).toContain('## Goal\n- Ship it\n## Next\n- Deploy')
+  expect(forks.length).toBe(1)
+  shown = String(((await run()) as { text?: string }).text)
+  expect(shown).toContain('## Next\n- Deploy')
+  expect(forks.length).toBe(1)
+  expect(copied.length).toBe(2)
 })
 
 test('/keepwarm, /cache-tax and /handoff answer from the board\'s own state', async ($, on) => {
@@ -898,6 +897,18 @@ test('the price follows the model picked under the prompt; a pricey message offe
   expect(text).toContain('"Opus 5.5"')
   expect(text).not.toContain('re-writes the chat')
   const onOpus = /"≈ ","([^"]+)"/.exec(text)?.[1]
+  // a decision in a chat on Opus points to a new chat on Fable: switching here would lose the cache
+  draft.text = 'decide a arquitetura do módulo de pagamentos'
+  await clock.advance(2000)
+  expect(JSON.stringify(await ui.drawn())).toContain('→ New chat · Fable high (architecture or a decision deserves Fable')
+  // handing work down only pays from a dearer chat: on Haiku, mechanical work stays here
+  model.id = 'claude-haiku-5-5'
+  draft.text = 'roda os testes e lista os que falham'
+  await clock.advance(2000)
+  expect(JSON.stringify(await ui.drawn())).toContain('→ Here · Haiku low (mechanical work, and this chat is already on Haiku)')
+  model.id = 'claude-opus-5-5'
+  draft.text = 'corrige o bug do login'
+  await clock.advance(2000)
   // Fable picked before sending: dearer, and the switch starts without this chat's cache
   model.id = 'fable'
   await clock.advance(2000)
@@ -907,8 +918,8 @@ test('the price follows the model picked under the prompt; a pricey message offe
   expect(text).toContain("a new model starts without this chat's cache: $4.00 of it re-writes the chat")
   expect(text).toContain('This looks expensive (up to $')
   expect(text).toContain('on Sonnet 5.5 (/model)')
-  // Plan it first puts the ask for a plan before the draft
-  await ui.press({ key: 'Plan it first' })
+  // the crew row's Plan puts the ask for a plan before the draft
+  await ui.press({ key: 'Plan' })
   expect(fills[0]).toStartWith('Plan first: before changing anything')
   expect(fills[0]).toEndWith('corrige o bug do login')
   draft.text = fills[0]
@@ -916,6 +927,112 @@ test('the price follows the model picked under the prompt; a pricey message offe
   text = JSON.stringify(await ui.drawn())
   expect(text).toContain('✓ plan first: Claude answers with a plan and waits for your OK')
   expect(text).not.toContain('This looks expensive')
+})
+
+test('the crew row stays above the prompt, typed or not: the draft lights the route it calls for, and each button rewrites the draft or opens a new chat', async ($, on) => {
+  const draft = { text: '' }
+  const fills: string[] = []
+  const ran: string[][] = []
+  const toasts: string[] = []
+  const clock = world(on, { usage: BIG, draft, fills, ran, toasts })
+  await $.session.start(start)
+  await clock.settle()
+  await $.turn.complete(turn())
+  const ui = await band($, 'desktop')
+  await clock.settle()
+  // nothing typed: the row is there, no route lit, no estimate; Codex is not installed in this world
+  let text = JSON.stringify(await ui.drawn())
+  expect(text).toContain('⚑ Crew')
+  for (const label of ['Here', 'Helper', 'New chat', 'Crew', 'Plan']) expect(text).toContain(`"label":"${label}"`)
+  expect(text).not.toContain('"variant":"primary"')
+  expect(text).not.toContain('This message')
+  expect(text).toContain('Codex: not installed')
+  // mechanical work lights Helper; parallel work lights Crew
+  draft.text = 'roda os testes e lista os que falham'
+  await clock.advance(2000)
+  text = JSON.stringify(await ui.drawn())
+  expect(text).toContain('"label":"Helper","variant":"primary"')
+  expect(text).toContain('→ Helper · Haiku low (mechanical work')
+  draft.text = 'usa agentes em paralelo pra refatorar o módulo de pagamentos'
+  await clock.advance(2000)
+  expect(JSON.stringify(await ui.drawn())).toContain('"label":"Crew","variant":"primary"')
+  // mechanical words that lean on this conversation stay here; a build in three listed parts is crew-sized
+  draft.text = 'lista as mudanças que você fez acima'
+  await clock.advance(2000)
+  expect(JSON.stringify(await ui.drawn())).toContain('"label":"Here","variant":"primary"')
+  draft.text = 'implementa o onboarding:\n1. página de boas-vindas\n2. formulário de perfil\n3. e-mail de confirmação'
+  await clock.advance(2000)
+  expect(JSON.stringify(await ui.drawn())).toContain('→ Crew · Opus medium (a build in several parts')
+  // the kind of work sets the lane: a decision gets Fable high (this chat is on Fable, so it stays), a rebase plans first,
+  // an image needs Codex, a chart names dataviz, research goes to a Sonnet worker with web search
+  draft.text = 'decide a arquitetura do módulo de pagamentos'
+  await clock.advance(2000)
+  expect(JSON.stringify(await ui.drawn())).toContain('→ Here · Fable high (architecture or a decision)')
+  draft.text = 'faz o rebase da branch em cima da main'
+  await clock.advance(2000)
+  expect(JSON.stringify(await ui.drawn())).toContain('→ Plan · Fable high (hard to undo: plan first, then run)')
+  draft.text = 'gera um logo pro app'
+  await clock.advance(2000)
+  expect(JSON.stringify(await ui.drawn())).toContain('→ Here · needs Codex: on (an image)')
+  draft.text = 'monta um gráfico da receita por mês'
+  await clock.advance(2000)
+  expect(JSON.stringify(await ui.drawn())).toContain('→ Here · Sonnet medium · dataviz (a chart)')
+  draft.text = 'pesquisa quanto custa o plano Max hoje'
+  await clock.advance(2000)
+  expect(JSON.stringify(await ui.drawn())).toContain('→ Helper · Sonnet medium · web search (research')
+  await ui.press({ key: 'Helper' })
+  expect(fills.pop()).toStartWith('Delegate: do this through one cheap subagent (the Agent tool with model "sonnet", using web search)')
+  // the same in English
+  for (const [text, line] of [
+    ['run the tests and list the failing ones', '→ Helper · Haiku low (mechanical work'],
+    ['rebase the branch onto main', '→ Plan · Fable high (hard to undo'],
+    ['decide the architecture of the payments module', '→ Here · Fable high (architecture or a decision)'],
+    ['generate a logo for the app', '→ Here · needs Codex: on (an image)'],
+    ['build a chart of revenue by month', '→ Here · Sonnet medium · dataviz (a chart)'],
+    ['look up how much the Max plan costs', '→ Helper · Sonnet medium · web search (research'],
+    ['use agents in parallel to refactor the payments module', '→ Crew ·'],
+    ['implement onboarding:\n1. welcome page\n2. profile form\n3. confirmation email', '→ Crew · Opus medium (a build in several parts'],
+    ['list the changes you made above', '→ Here ·'],
+    // this person's own words: approvals stay here, "sobe" is a deploy, "cadê" is a search, a bare "logo" is "soon", a question about a button is no research
+    ['pode deploy', '→ Here (a short reply)'],
+    ['boa, faz o 1 ai', '→ Here (a short reply)'],
+    ['sobe isso no site pls', '→ Plan · Fable high (hard to undo'],
+    ['cadê o pacote que eu preciso carregar?', '→ Helper · Haiku low (mechanical work'],
+    ['deixa o botão logo embaixo do título', '→ Here · Sonnet medium (a fix)'],
+    ['mais curto, mais conciso, mais impactante', '→ Here · Sonnet medium · the write-human skill (writing)'],
+    ['faz uma landing page nova pro Jesse', '→ Here · Opus high · the design skill'],
+    ['o que é esse botão de resume handoff?', '→ Here · Sonnet low (a quick answer)'],
+    ['tira essa última frase do vídeo', '→ Here · Opus medium · Remotion (a video)'],
+    ['traduz o roteiro pro inglês', '→ Here · Sonnet medium · the write-human skill (writing)'],
+    ['pensa aí comigo: vale a pena separar isso em outro mod?', '→ Here · Fable high (architecture or a decision)'],
+  ]) {
+    draft.text = text
+    await clock.advance(2000)
+    expect(JSON.stringify(await ui.drawn())).toContain(line)
+  }
+  draft.text = 'usa agentes em paralelo pra refatorar o módulo de pagamentos'
+  await clock.advance(2000)
+  // Helper and Crew put their prefix before the draft; Here takes it off again
+  await ui.press({ key: 'Helper' })
+  expect(fills[0]).toStartWith('Delegate: do this through one cheap subagent')
+  expect(fills[0]).toEndWith('refatorar o módulo de pagamentos')
+  draft.text = fills[0]
+  await clock.advance(2000)
+  await ui.press({ key: 'Crew' })
+  expect(fills[1]).toBe('/cockpit:crew usa agentes em paralelo pra refatorar o módulo de pagamentos')
+  draft.text = fills[1]
+  await clock.advance(2000)
+  await ui.press({ key: 'Here' })
+  expect(fills[2]).toBe('usa agentes em paralelo pra refatorar o módulo de pagamentos')
+  // New chat opens the app's new-chat link on the draft, naming the project folder; nothing is sent
+  await ui.press({ key: 'New chat' })
+  const opened = ran.find(argv => (argv.at(-1) ?? '').startsWith('claude://code/new?'))
+  expect(opened).toBeDefined()
+  expect(decodeURIComponent(opened!.at(-1)!)).toContain(`Project folder: ${ROOT}. usa agentes em paralelo`)
+  expect(toasts.at(-1)).toContain('approve it in the app')
+  // the Codex switch without a codex command only explains itself
+  await ui.press({ key: 'Codex: not installed' })
+  expect(toasts.at(-1)).toContain('Codex is not installed here')
 })
 
 test('next steps and the estimate share one box above the prompt: the suggestions, then what the typed message costs', async ($, on) => {

@@ -1,7 +1,7 @@
 ---
 name: crew-medium
-description: Crew worker for everyday work (Opus, medium effort): standard features and bug fixes with a known cause, in a few files. Started only by /cockpit:crew.
-model: opus
+description: Crew worker for everyday work (Sonnet, medium effort): standard features and bug fixes with a known cause, in a few files. Started only by /cockpit:crew.
+model: sonnet
 effort: medium
 ---
 
