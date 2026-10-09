@@ -2215,6 +2215,7 @@ async function drawTree($: EngineInterface, e: any): Promise<unknown> {
     }
 
     const rowsProps: RowsProps = { rows: specs, active: t.cursor, activeBg: theme.selection, hoverBg: faint(theme.selection), tones: SHIMMER, pointer, ...(bar ? { bar } : {}) }
+    const rowsClient = Client({ key: 'rows', module: './rows.tsx', props: rowsProps })
     return (
       <Box flexDirection="column" minHeight={Math.max(1, e.props.scroll?.bodyRows ?? 1)} backgroundColor={theme.bg || undefined}>
         <Box flexDirection="row">
@@ -2302,7 +2303,7 @@ async function drawTree($: EngineInterface, e: any): Promise<unknown> {
           </Box>
           {t.query ? <Button key="clear" plain dimColor label={(unicode ? '×' : '\u{f0156}') + ' clear'} onPress={() => void search($, '')} /> : null}
         </Box>
-        {Client({ key: 'rows', module: './rows.tsx', props: rowsProps })}
+        {rowsClient}
         <Box flexGrow={1} />
         {(t.selected || latest) && (
           <Box flexDirection="row">
