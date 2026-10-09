@@ -1,0 +1,6 @@
+*.bak.tsx
+cockpit/design/
+.DS_Store
+node_modules/
+.last-*.log
+*.bak-ship
