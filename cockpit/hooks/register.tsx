@@ -289,7 +289,7 @@ async function drawCockpit($: EngineInterface, e: any, next: any): Promise<unkno
     if (e.surface !== 'terminal' && e.surface !== 'desktop') return next(e)
     if (e.surface === 'terminal' && e.props.placement === 'inline') return drawTree($, e)
 
-    const { windows, context, cost } = await usage($)
+    const { windows, context, cost } = await readUsage($)
     const flowNow = await read($, flow)
     const list = await read($, agents)
     const now = Math.max(await read($, nowAtom), ...list.map(a => a.startedAt), 0)
@@ -899,7 +899,7 @@ function windowWorth(w: Window): string {
 
 // --- data
 
-async function usage($: EngineInterface): Promise<{ windows: Window[]; context: Context | null; cost: number | null }> {
+async function readUsage($: EngineInterface): Promise<{ windows: Window[]; context: Context | null; cost: number | null }> {
   try {
     const u = await $.session.usage()
     const windows = (u.rateLimits ?? []).filter(w => typeof w.percentUsed === 'number')
@@ -1164,7 +1164,7 @@ async function setActivities($: EngineInterface, fn: (list: Activity[]) => Activ
   await update($, ACTIVITY, cur => fn(cur ?? []).slice(-6))
 }
 
-async function list($: EngineInterface, dir: string): Promise<FileNode[] | null> {
+async function listDir($: EngineInterface, dir: string): Promise<FileNode[] | null> {
   try {
     const entries = await $.fs.list(dir)
     const resolved = await Promise.all(
@@ -1196,7 +1196,7 @@ async function loadDirs($: EngineInterface, dirs: string[]): Promise<Map<string,
   const root = (await get($)).root
   const seq = ++listSeq
   for (const dir of dirs) listLatest.set(dir, seq)
-  const results = await Promise.all(dirs.map(async dir => [dir, await list($, dir)] as const))
+  const results = await Promise.all(dirs.map(async dir => [dir, await listDir($, dir)] as const))
   const listed = new Map<string, FileNode[]>()
   for (const [dir, kids] of results) {
     if (listLatest.get(dir) !== seq) continue
@@ -1277,7 +1277,7 @@ function refreshGit($: EngineInterface): Promise<void> {
   return gitNext
 }
 
-async function reset($: EngineInterface, root: string, focus = false): Promise<void> {
+async function resetTree($: EngineInterface, root: string, focus = false): Promise<void> {
   const prev = await get($)
   generation += 1
   blink?.cancel()
@@ -1515,7 +1515,7 @@ async function followCwd($: EngineInterface): Promise<boolean> {
   const cwd = await cwdOf($)
   const t = await get($)
   if (t.root === cwd) return false
-  await reset($, cwd)
+  await resetTree($, cwd)
   return true
 }
 
@@ -1800,7 +1800,7 @@ async function walk($: EngineInterface, root: string, depth: number, limit: numb
   for (let d = 0; d < depth && level.length && out.length < limit; d++) {
     const next: string[] = []
     for (const dir of level) {
-      for (const n of (await list($, dir)) ?? []) {
+      for (const n of (await listDir($, dir)) ?? []) {
         if (n.kind === 'dir') {
           if (!PRUNE.includes(n.name)) next.push(n.id)
         } else out.push(n.id)
@@ -1919,7 +1919,7 @@ async function press($: EngineInterface, n: FileNode): Promise<void> {
 async function openNode($: EngineInterface, n: FileNode): Promise<void> {
   if (n.kind === 'dir') {
     follow = false
-    await reset($, n.id)
+    await resetTree($, n.id)
   } else await openFile($, n.id)
 }
 
@@ -1962,7 +1962,7 @@ async function startFiletree($: EngineInterface): Promise<void> {
       if (t.flashOn) await patch($, () => ({ flash: [], flashDim: [], flashOn: false, flashTones: {} }))
       await setActivities($, cur => cur.map(a => (a.state === 'running' ? { ...a, state: 'failed', label: `${a.kind} interrupted` } : a)))
       const cwd = await cwdOf($)
-      if (!t.root || t.nodes.length === 0 || (follow && t.root !== cwd)) await reset($, cwd)
+      if (!t.root || t.nodes.length === 0 || (follow && t.root !== cwd)) await resetTree($, cwd)
       else if (!noDock) await $.ui.open({ id: PANE, title: 'Cockpit Board' })
     })()
 }
@@ -2214,6 +2214,7 @@ async function drawTree($: EngineInterface, e: any): Promise<unknown> {
       )
     }
 
+    const rowsProps: RowsProps = { rows: specs, active: t.cursor, activeBg: theme.selection, hoverBg: faint(theme.selection), tones: SHIMMER, pointer, ...(bar ? { bar } : {}) }
     return (
       <Box flexDirection="column" minHeight={Math.max(1, e.props.scroll?.bodyRows ?? 1)} backgroundColor={theme.bg || undefined}>
         <Box flexDirection="row">
@@ -2230,7 +2231,7 @@ async function drawTree($: EngineInterface, e: any): Promise<unknown> {
               onPress={() =>
                 void (async () => {
                   follow = false
-                  await reset($, dirname(t.root))
+                  await resetTree($, dirname(t.root))
                 })()
               }
             />
@@ -2242,7 +2243,7 @@ async function drawTree($: EngineInterface, e: any): Promise<unknown> {
               onPress={() =>
                 void (async () => {
                   follow = true
-                  await reset($, await cwdOf($))
+                  await resetTree($, await cwdOf($))
                 })()
               }
             />
@@ -2301,11 +2302,7 @@ async function drawTree($: EngineInterface, e: any): Promise<unknown> {
           </Box>
           {t.query ? <Button key="clear" plain dimColor label={(unicode ? '×' : '\u{f0156}') + ' clear'} onPress={() => void search($, '')} /> : null}
         </Box>
-        <Client
-          key="rows"
-          module="./rows.tsx"
-          props={{ rows: specs, active: t.cursor, activeBg: theme.selection, hoverBg: faint(theme.selection), tones: SHIMMER, pointer, ...(bar ? { bar } : {}) } satisfies RowsProps}
-        />
+        <Client module="./rows.tsx" key="rows" props={rowsProps} />
         <Box flexGrow={1} />
         {(t.selected || latest) && (
           <Box flexDirection="row">
@@ -3910,7 +3907,7 @@ export const register: Register = (on, options) => {
         await loadTheme($)
         const root = follow || !lastRoot ? await cwdOf($) : lastRoot
         const t = await get($)
-        if (t.root !== root || t.nodes.length === 0) await reset($, root)
+        if (t.root !== root || t.nodes.length === 0) await resetTree($, root)
       })()
     }
     await cacheSessionStart($, e)
@@ -3938,7 +3935,7 @@ export const register: Register = (on, options) => {
     const cwd = await cwdOf($)
     follow = !arg
     const root = arg ? resolve(cwd, arg, home) : cwd
-    await reset($, root, true)
+    await resetTree($, root, true)
     return { text: `Cockpit Board on ${shortPath(root)}${follow ? ' (follows the cwd)' : ''}.` }
   })
 
