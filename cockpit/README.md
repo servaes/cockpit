@@ -5,6 +5,15 @@ Everything the board shows ships inside it: the file tree, the crew skill with
 its worker agents and progress band, the goal meter, Replay Theater, the Caution
 guard (inside Needs you), Ship and cache-tax. No other mod is needed.
 
+## Install
+
+In Claude Code:
+
+```
+/plugin marketplace add servaes/cockpit
+/plugin install cockpit@my-mods
+```
+
 ## What the board shows
 
 On the desktop (since 3.0; compact since 3.1) the board is drawn, not typed: two zones, ACCOUNT

@@ -1,14 +1,14 @@
-# my-mods
+# Cockpit
 
-André Servaes's Claude Code plugins.
+The Cockpit Board for Claude Code, by André Servaes. See [cockpit/README.md](cockpit/README.md) for what it shows.
 
-## Install Cockpit
+## Install
 
 In Claude Code:
 
 ```
-/plugin marketplace add servaes/my-mods
+/plugin marketplace add servaes/cockpit
 /plugin install cockpit@my-mods
 ```
 
-Update later with `/plugin marketplace update my-mods`.
+Update later with `/plugin marketplace update my-mods`, then `/plugin update cockpit@my-mods`.
