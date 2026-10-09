@@ -2302,7 +2302,7 @@ async function drawTree($: EngineInterface, e: any): Promise<unknown> {
           </Box>
           {t.query ? <Button key="clear" plain dimColor label={(unicode ? '×' : '\u{f0156}') + ' clear'} onPress={() => void search($, '')} /> : null}
         </Box>
-        <Client module="./rows.tsx" key="rows" props={rowsProps} />
+        {Client({ key: 'rows', module: './rows.tsx', props: rowsProps })}
         <Box flexGrow={1} />
         {(t.selected || latest) && (
           <Box flexDirection="row">
