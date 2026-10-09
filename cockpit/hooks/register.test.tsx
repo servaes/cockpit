@@ -1052,7 +1052,7 @@ test('the crew row stays above the prompt, typed or not: the draft lights the ro
   const opened = ran.find(argv => (argv.at(-1) ?? '').startsWith('claude://code/new?'))
   expect(opened).toBeDefined()
   expect(decodeURIComponent(opened!.at(-1)!)).toContain(`Project folder: ${ROOT}. usa agentes em paralelo`)
-  expect(toasts.at(-1)).toContain('approve it in the app')
+  expect(toasts.at(-1)).toContain('click Trust workspace in the app')
   // the Codex switch without a codex command only explains itself
   await ui.press({ key: 'Codex: not installed' })
   expect(toasts.at(-1)).toContain('Codex is not installed here')
@@ -1081,10 +1081,10 @@ test('New chat opens a real chat on the draft and the board follows it: found by
   const id = /\[crew-chat ([a-z0-9]+)\]/.exec(url)?.[1]
   expect(id).toBeDefined()
   expect(url).toContain(`Project folder: ${ROOT}.`)
-  expect(toasts.at(-1)).toContain('approve it in the app')
+  expect(toasts.at(-1)).toContain('click Trust workspace in the app')
   let text = JSON.stringify(await board.drawn())
   expect(text).toContain('implementa o onboarding inteiro')
-  expect(text).toContain('waiting for your Enter in the app')
+  expect(text).toContain('waiting for Trust workspace and your Enter in the app')
   // the chat's transcript appears with the marker in its first message: the board binds it and reads its tail
   files['/home/t/.claude/projects/-tmp-project/s9.jsonl'] = [
     JSON.stringify({ type: 'user', message: { role: 'user', content: `Project folder: ${ROOT}. implementa o onboarding inteiro\n\n[crew-chat ${id}]` } }),

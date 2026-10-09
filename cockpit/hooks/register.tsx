@@ -5893,7 +5893,7 @@ async function crewPress($: EngineInterface, route: Route): Promise<void> {
     await $.store.set(CREW_CHATS_KEY, crewChats)
     await openFile($, `claude://code/new?${cwd ? `folder=${encodeURIComponent(cwd)}&` : ''}q=${encodeURIComponent(q)}`)
     $.ui.invalidate('ui.render')
-    return $.ui.toast(`New chat opened on the draft${note ? ' with this chat\'s handoff note' : ''}: approve it in the app${pick ? `, pick ${pick} in its model menu` : ''}, then press Enter there.`)
+    return $.ui.toast(`New chat opened on the draft${note ? ' with this chat\'s handoff note' : ''}: click Trust workspace in the app${pick ? `, pick ${pick} in its model menu` : ''}, then press Enter there.`)
   }
   const helper = lane && lane.model !== 'codex' ? helperPrefix(lane.model, lane.specialist) : HELPER_PREFIX
   const text = route === 'helper' ? `${helper}${draft}` : route === 'crew' ? `${CREW_PREFIX}${draft}` : route === 'plan' ? `${PLAN_FIRST}${draft}` : draft
@@ -5940,7 +5940,7 @@ function crewHeadline(): string {
 function crewRows(now: number): (CardRow & { k: string })[] {
   return crewChats.map(c => {
     const mark: AgentRun['status'] = c.status === 'working' ? 'running' : c.status === 'gone' ? 'failed' : 'done'
-    const state = c.status === 'opening' ? 'waiting for your Enter in the app' : c.status === 'working' ? 'working' : c.status === 'idle' ? 'finished' : 'gone'
+    const state = c.status === 'opening' ? 'waiting for Trust workspace and your Enter in the app' : c.status === 'working' ? 'working' : c.status === 'idle' ? 'finished' : 'gone'
     const tail = [c.model ? modelName(c.model) : '', state, c.costUsd ? `≈ ${cacheUsd(c.costUsd)}` : '', c.lastAt ? fmtTime(Math.max(0, now - c.lastAt)) + ' ago' : '', c.last].filter(Boolean).join(' · ')
     return { k: `crew:${c.id}`, mark, color: c.status === 'opening' ? '#888780' : statusColor(mark), text: c.title, strong: true, tail }
   })
