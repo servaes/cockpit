@@ -259,6 +259,19 @@ O que o benchmark mostrou, e o que mudou por causa dele:
 
 Tudo dentro do cockpit, sem mod novo.
 
+## Teste ao vivo (10 out)
+
+Chats novos no app, cada um com a mesma pergunta: "seu prompt de sistema tem a seção do crew?".
+
+| Versão | Seção do crew | Rota da pergunta | O que mudou depois |
+|---|---|---|---|
+| 3.14.0, ainda do cache 3.10.3 | não | nenhuma | o app carrega o plugin do cache, não da pasta `my-mods`: depois de cada versão, rodar `claude plugin marketplace update my-mods` e `claude plugin update cockpit@my-mods` |
+| 3.14.0 | sim | Crew (errado) | o aviso que o app põe antes da mensagem, com a lista de pastas recentes, contava como partes de um build. A 3.14.1 lê só as palavras da pessoa |
+| 3.14.1 | sim | Helper · Haiku (errado) | "Teste do Cockpit" era lido como o verbo "testar". Na 3.14.2, "teste do/da" é substantivo |
+| 3.14.2 | sim | Here, sem nota (certo) | nada |
+
+Nos três chats com a 3.14.x, a faixa acima da caixa de texto foi desenhada no app de desktop, sem recusa. Ela sempre começa pela linha "⚑ Crew".
+
 ## Como saber se deu certo
 
 - Pelo menos 30% mais barato que hoje, com a mesma qualidade. **Medido: 26% neste conjunto de tarefas; 65% nas mecânicas.** Perto, não lá: o próximo passo é medir no seu uso real (o board já guarda custo por mensagem).
