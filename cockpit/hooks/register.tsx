@@ -4423,6 +4423,8 @@ async function noteCd($: EngineInterface, e: any): Promise<void> {
   if (!root) return
   const target = resolve(root, raw, home).replace(/\/$/, '')
   if (!target || target === root || inside(root, target)) return
+  // a temporary folder (a scratchpad under /tmp, /var/folders) holds throwaway work, never the project
+  if (SCRATCH.some(re => re.test(`${target}/`))) return
   needs.cds[target] = (needs.cds[target] ?? 0) + 1
   if (needs.cds[target] < CD_NUDGE_AT || needs.items.some(n => n.kind === 'folder')) return
   needs.folderAsked = true

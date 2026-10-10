@@ -4,3 +4,4 @@ cockpit/design/
 node_modules/
 .last-*.log
 *.bak-ship
+cockpit/docs/bench/wt/

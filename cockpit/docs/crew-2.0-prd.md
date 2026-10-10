@@ -204,6 +204,8 @@ Nesta máquina: o `codex` vem dentro do app do ChatGPT (`/Applications/ChatGPT.a
 
 ## Benchmark (9 out, à noite)
 
+Os dados, os scripts e os resultados de cada rodada estão em [bench/](bench/README.md).
+
 Cinco tarefas reais do cockpit, cada uma feita de três jeitos, em cópias descartáveis do repositório (apagadas no fim). Custo **medido** nos transcripts dos agentes, a preço de API. Qualidade conferida contra a resposta certa (T1–T4) e por um juiz Opus às cegas (T5).
 
 | Tarefa | A: Opus sozinho | B: estilo Threads (Opus planeja → Sonnet faz → Haiku confere) | C: roteador, como estava |
@@ -271,6 +273,8 @@ Chats novos no app, cada um com a mesma pergunta: "seu prompt de sistema tem a s
 | 3.14.2 | sim | Here, sem nota (certo) | nada |
 
 Nos três chats com a 3.14.x, a faixa acima da caixa de texto foi desenhada no app de desktop, sem recusa. Ela sempre começa pela linha "⚑ Crew".
+
+![Chat novo com o Cockpit 3.14.2: a linha ⚑ Crew acima da caixa de texto](crew-row.png)
 
 ## Como saber se deu certo
 

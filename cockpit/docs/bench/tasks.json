@@ -1,0 +1,7 @@
+[
+ "List every key the cockpit stores across sessions: each $.store.get or $.store.set call in cockpit/hooks/register.tsx, with its line number. Put the list in BENCH.md at the worktree root.",
+ "Rename the constant CREW_TITLE_MAX to CREW_CHAT_TITLE_MAX everywhere in cockpit/hooks/register.tsx; change nothing else.",
+ "The Crew chats card on the board says nothing is open while chats are working. The cause is in crewRunning in cockpit/hooks/register.tsx. Fix it, then run the tests: claude plugin test <worktree>/cockpit",
+ "Add a setting crewChatMax (a number, default 10: how many crew chats may be open at once) to the userConfig in cockpit/.claude-plugin/plugin.json, and make CREW_CHAT_MAX read it the way minAnswerChars is read in cockpit/hooks/register.tsx. Then run the tests: claude plugin test <worktree>/cockpit",
+ "Review the routeNote function in cockpit/hooks/register.tsx for security problems (prompt injection, shell quoting, data sent to Codex). Put at most 5 findings in BENCH.md at the worktree root, most serious first, each with its line and a one-line fix."
+]

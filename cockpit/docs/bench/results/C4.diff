@@ -1,0 +1,63 @@
+diff --git a/cockpit/.claude-plugin/plugin.json b/cockpit/.claude-plugin/plugin.json
+index dde4b50..2b3ae69 100644
+--- a/cockpit/.claude-plugin/plugin.json
++++ b/cockpit/.claude-plugin/plugin.json
+@@ -66,6 +66,13 @@
+       "required": false,
+       "default": true
+     },
++    "crewChatMax": {
++      "type": "number",
++      "title": "Crew chats: most open at once",
++      "description": "How many crew chats New chat may have open at the same time; past this it asks you to forget the finished ones first.",
++      "required": false,
++      "default": 10
++    },
+     "plan": {
+       "type": "string",
+       "title": "Plan",
+diff --git a/cockpit/README.md b/cockpit/README.md
+index 95a4608..0798c9b 100644
+--- a/cockpit/README.md
++++ b/cockpit/README.md
+@@ -194,7 +194,7 @@ an expanding one (`<<EOF`) is read, since a `$( )` in it runs.
+   handoff note (the fresh one when there is one, else one fork over the warm cache) and opens
+   the app's new-chat link on the draft, naming the project folder and the note to read first:
+   you approve the new chat in the app and press Enter there. Nothing is sent. At most ten crew
+-  chats at a time.
++  chats at a time (the `crewChatMax` setting).
+ - **Crew chats**, a card under Agents: every chat New chat opened, followed through the
+   transcript the app writes for it (found by a marker in its first message): waiting for your
+   Enter, working or finished, its model, an estimated cost and its last words. Finished chats
+@@ -209,7 +209,8 @@ an expanding one (`<<EOF`) is read, since a `$( )` in it runs.
+   Crew and goal progress still show only on the board.
+ - **Settings** (in `/config`): `plan` for the dollar figure beside Session and Week (auto, Pro,
+   Max 5x, Max 20x, none); `language` for the board's crew texts (auto, en, ru);
+-  `activity`, `glyphs`, `follow` and `column` for the tree, as filetree had them.
++  `activity`, `glyphs`, `follow` and `column` for the tree, as filetree had them;
++  `crewChatMax` for how many crew chats may be open at once (default 10).
+ 
+ Each part came from a published mod; see `THIRD_PARTY_LICENSES.md`.
+ 
+diff --git a/cockpit/hooks/register.tsx b/cockpit/hooks/register.tsx
+index 80ec8b0..35be5b8 100644
+--- a/cockpit/hooks/register.tsx
++++ b/cockpit/hooks/register.tsx
+@@ -3654,6 +3654,7 @@ export const register: Register = (on, options) => {
+     glyphSetting = typeof options?.glyphs === 'string' ? options.glyphs : 'auto'
+     planSetting = typeof options?.plan === 'string' ? options.plan : 'auto'
+     nextMinChars = typeof options?.minAnswerChars === 'number' ? options.minAnswerChars : 80
++    CREW_CHAT_MAX = typeof options?.crewChatMax === 'number' ? options.crewChatMax : 10
+     nextSuggestsSkills = options?.suggestSkills !== false
+     const activity = typeof options?.activity === 'string' ? options.activity : 'reads and writes'
+     showReads = activity.includes('reads')
+@@ -6108,7 +6109,8 @@ type CrewChat = {
+   costUsd: number; last: string; lastAt: number; model: string; mtime: number
+ }
+ const CREW_CHATS_KEY = 'crew.chats'
+-const CREW_CHAT_MAX = 10
++// How many crew chats may be open at once: the crewChatMax setting, read in register.
++let CREW_CHAT_MAX = 10
+ const CREW_TITLE_MAX = 48
+ const CREW_LAST_MAX = 90
+ const NOTE_FRESH_MS = 10 * 60 * 1000

@@ -1,0 +1,3 @@
+- Unquoted heredocs execute command substitutions: `cat <<EOF\n$(rm -rf /tmp/victim)\nEOF` hides an executable dangerous command.
+- Quoted literals falsely trigger stripping: `echo '<<EOF'\nrm -rf /tmp/victim` hides the actual next command.
+- Multiple heredocs only strip the first body: `cat <<A <<B\nfirst\nA\nrm -rf /tmp/victim\nB` leaves harmless second-body text for scanning.

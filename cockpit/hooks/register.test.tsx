@@ -1552,19 +1552,33 @@ test('three commands that cd into another folder ask to move the chat, as a Need
   on('tool.call', { tool: 'Bash' }, async () => ({ result: { stdout: '', stderr: '', exitCode: 0 } }) as never)
   await $.session.start(start)
   await clock.settle()
-  for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: 'cd /tmp/other-project && npm test' } as never)
+  for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: 'cd /srv/other-project && npm test' } as never)
   await clock.settle()
   const ui = await mount($, 'desktop')
   await clock.settle()
   let text = JSON.stringify(await ui.drawn())
   expect(text).toContain('Chat opened in the wrong folder?')
-  expect(text).toContain('3 cd into /tmp/other-project')
+  expect(text).toContain('3 cd into /srv/other-project')
   expect(text).toContain('"label":"Move chat"')
   await ui.press({ key: 'need:1:move' })
   await clock.settle()
-  expect(entered.some(t => t.startsWith('Move this chat to /tmp/other-project'))).toBe(true)
+  expect(entered.some(t => t.startsWith('Move this chat to /srv/other-project'))).toBe(true)
   text = JSON.stringify(await ui.drawn())
   expect(text).not.toContain('wrong folder')
+})
+
+test('commands that cd into a scratchpad or another temporary folder never ask to move the chat', async ($, on) => {
+  const clock = world(on)
+  on('tool.call', { tool: 'Bash' }, async () => ({ result: { stdout: '', stderr: '', exitCode: 0 } }) as never)
+  await $.session.start(start)
+  await clock.settle()
+  for (const dir of ['/private/tmp/claude-501/proj/session/scratchpad', '/tmp/scratch', '/var/folders/x1/T/work']) {
+    for (let i = 0; i < 3; i++) await $.tool.call({ tool: 'Bash', command: `cd ${dir} && python3 cost.py` } as never)
+  }
+  await clock.settle()
+  const ui = await mount($, 'desktop')
+  await clock.settle()
+  expect(JSON.stringify(await ui.drawn())).not.toContain('wrong folder')
 })
 
 test('See visual changes opens the compare under File Changes, with the asks numbered', async ($, on) => {

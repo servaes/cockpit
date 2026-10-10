@@ -1,0 +1,2 @@
+5755:const CODEX_IN_APP = '/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex'
+6062:    crew.codexBin = /^\/.*\/codex$/.test(found) ? found : ''

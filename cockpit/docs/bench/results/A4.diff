@@ -1,0 +1,40 @@
+diff --git a/cockpit/.claude-plugin/plugin.json b/cockpit/.claude-plugin/plugin.json
+index dde4b50..2fc39dd 100644
+--- a/cockpit/.claude-plugin/plugin.json
++++ b/cockpit/.claude-plugin/plugin.json
+@@ -59,6 +59,13 @@
+       "required": false,
+       "default": 80
+     },
++    "crewChatMax": {
++      "type": "number",
++      "title": "Crew: most open chats",
++      "description": "How many crew chats may be open at once.",
++      "required": false,
++      "default": 10
++    },
+     "suggestSkills": {
+       "type": "boolean",
+       "title": "Next steps: suggest skills and slash commands",
+diff --git a/cockpit/hooks/register.tsx b/cockpit/hooks/register.tsx
+index 80ec8b0..35be5b8 100644
+--- a/cockpit/hooks/register.tsx
++++ b/cockpit/hooks/register.tsx
+@@ -3654,6 +3654,7 @@ export const register: Register = (on, options) => {
+     glyphSetting = typeof options?.glyphs === 'string' ? options.glyphs : 'auto'
+     planSetting = typeof options?.plan === 'string' ? options.plan : 'auto'
+     nextMinChars = typeof options?.minAnswerChars === 'number' ? options.minAnswerChars : 80
++    CREW_CHAT_MAX = typeof options?.crewChatMax === 'number' ? options.crewChatMax : 10
+     nextSuggestsSkills = options?.suggestSkills !== false
+     const activity = typeof options?.activity === 'string' ? options.activity : 'reads and writes'
+     showReads = activity.includes('reads')
+@@ -6108,7 +6109,8 @@ type CrewChat = {
+   costUsd: number; last: string; lastAt: number; model: string; mtime: number
+ }
+ const CREW_CHATS_KEY = 'crew.chats'
+-const CREW_CHAT_MAX = 10
++// How many crew chats may be open at once: the crewChatMax setting, read in register.
++let CREW_CHAT_MAX = 10
+ const CREW_TITLE_MAX = 48
+ const CREW_LAST_MAX = 90
+ const NOTE_FRESH_MS = 10 * 60 * 1000

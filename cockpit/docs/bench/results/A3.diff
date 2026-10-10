@@ -1,0 +1,13 @@
+diff --git a/cockpit/hooks/register.tsx b/cockpit/hooks/register.tsx
+index 80ec8b0..05235d5 100644
+--- a/cockpit/hooks/register.tsx
++++ b/cockpit/hooks/register.tsx
+@@ -6121,7 +6121,7 @@ const CREW_HEAD_MAX = 256 * 1024
+ let crewChats: CrewChat[] = []
+ let crewPollTick = 0
+ 
+-const crewRunning = (): CrewChat[] => crewChats.filter(c => c.status !== 'gone')
++const crewRunning = (): CrewChat[] => crewChats.filter(c => c.status === 'opening' || c.status === 'working')
+ 
+ /** The crew card's headline. */
+ function crewHeadline(): string {

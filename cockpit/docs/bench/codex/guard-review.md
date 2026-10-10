@@ -1,0 +1,5 @@
+- **First risk hides later deletions:** `rm -f /tmp/nonexistent; rm -rf /important-data` — the first `rm` passes with zero files, releasing the entire command unchecked.
+- **Executable heredoc stripped:** `bash <<'EOF'` … `rm -rf /important-data` … `EOF` (separate lines) — the guard removes the body, but Bash executes it.
+- **Wrapper option hides `rm`:** `command -- rm -rf /important-data` — prefix stripping leaves `--` as the apparent command, so classification returns no risk.
+- **Shell quote concatenation hides `rm`:** `r''m -rf /important-data` — the shell executes `rm`, but the tokenizer retains `r''m` and misses it.
+- **Skipped `cd` misdirects measurement:** `false && cd /tmp; rm -rf important-data` — the guard measures `/tmp/important-data`; if absent, it allows deletion of `important-data` in the actual working directory.

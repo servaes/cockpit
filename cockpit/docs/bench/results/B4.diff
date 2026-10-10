@@ -1,0 +1,52 @@
+diff --git a/cockpit/.claude-plugin/plugin.json b/cockpit/.claude-plugin/plugin.json
+index dde4b50..66a5f90 100644
+--- a/cockpit/.claude-plugin/plugin.json
++++ b/cockpit/.claude-plugin/plugin.json
+@@ -66,6 +66,13 @@
+       "required": false,
+       "default": true
+     },
++    "crewChatMax": {
++      "type": "number",
++      "title": "Crew chats: most open at once",
++      "description": "How many crew chats New chat may have open at once; past this, New chat asks you to forget finished ones first.",
++      "required": false,
++      "default": 10
++    },
+     "plan": {
+       "type": "string",
+       "title": "Plan",
+diff --git a/cockpit/README.md b/cockpit/README.md
+index 95a4608..a5de560 100644
+--- a/cockpit/README.md
++++ b/cockpit/README.md
+@@ -194,7 +194,7 @@ an expanding one (`<<EOF`) is read, since a `$( )` in it runs.
+   handoff note (the fresh one when there is one, else one fork over the warm cache) and opens
+   the app's new-chat link on the draft, naming the project folder and the note to read first:
+   you approve the new chat in the app and press Enter there. Nothing is sent. At most ten crew
+-  chats at a time.
++  chats at a time by default (setting: `crewChatMax`).
+ - **Crew chats**, a card under Agents: every chat New chat opened, followed through the
+   transcript the app writes for it (found by a marker in its first message): waiting for your
+   Enter, working or finished, its model, an estimated cost and its last words. Finished chats
+diff --git a/cockpit/hooks/register.tsx b/cockpit/hooks/register.tsx
+index 80ec8b0..b85a27c 100644
+--- a/cockpit/hooks/register.tsx
++++ b/cockpit/hooks/register.tsx
+@@ -3655,6 +3655,7 @@ export const register: Register = (on, options) => {
+     planSetting = typeof options?.plan === 'string' ? options.plan : 'auto'
+     nextMinChars = typeof options?.minAnswerChars === 'number' ? options.minAnswerChars : 80
+     nextSuggestsSkills = options?.suggestSkills !== false
++    CREW_CHAT_MAX = typeof options?.crewChatMax === 'number' ? options.crewChatMax : 10
+     const activity = typeof options?.activity === 'string' ? options.activity : 'reads and writes'
+     showReads = activity.includes('reads')
+     showWrites = activity.includes('writes')
+@@ -6108,7 +6109,7 @@ type CrewChat = {
+   costUsd: number; last: string; lastAt: number; model: string; mtime: number
+ }
+ const CREW_CHATS_KEY = 'crew.chats'
+-const CREW_CHAT_MAX = 10
++let CREW_CHAT_MAX = 10
+ const CREW_TITLE_MAX = 48
+ const CREW_LAST_MAX = 90
+ const NOTE_FRESH_MS = 10 * 60 * 1000
