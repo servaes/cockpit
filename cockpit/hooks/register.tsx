@@ -4750,6 +4750,8 @@ function topFolder(path, homeDir) {
 /** Whether a measured rm is small enough to run without a hold, and why. */
 function rmPasses(risk, report, cwd, sessionCwd) {
   if (risk.kind !== "rm" || typeof report?.files !== "number") return "";
+  // A target the shell expands ($HOME, $(…), `…`, ~user) was measured as written, not as it will run: always held.
+  if (risk.targets.some((p) => /[$`]/.test(p) || /^~[^/]/.test(p))) return "";
   const paths = risk.targets.filter((p) => !/[*?[]/.test(p)).map((p) => resolve(cwd, p, home));
   if (risk.targets.some((p) => p === "/" || p === "~" || p === "~/" || p === "*" || p === "/*")) return "";
   if (paths.some((p) => topFolder(p, home))) return "";

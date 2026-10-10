@@ -484,6 +484,11 @@ test('a small rm where losing it costs nothing runs without a hold; bypass mode 
   w.rmReport = '3 4096 1\n'
   expect(await runs('rm -rf ~/Documents')).toBe(false)
   expect(await runs('rm -rf ~')).toBe(false)
+  // a target the shell expands was measured as written ("nothing to delete"): held in any mode
+  w.rmReport = '0 0 0\n'
+  expect(await runs('rm -rf $HOME')).toBe(false)
+  expect(await runs('rm -rf "$D"')).toBe(false)
+  expect(await runs('rm -rf ~root')).toBe(false)
   // the ones let through are not counted as solved on the board
   expect(JSON.stringify(await ui.drawn())).not.toContain('9 solved')
 })
