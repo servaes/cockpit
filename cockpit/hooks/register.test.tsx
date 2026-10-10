@@ -1051,7 +1051,7 @@ test('the crew row stays above the prompt, typed or not: the draft lights the ro
   await ui.press({ key: 'New chat' })
   const opened = ran.find(argv => (argv.at(-1) ?? '').startsWith('claude://code/new?'))
   expect(opened).toBeDefined()
-  expect(decodeURIComponent(opened!.at(-1)!)).toContain(`Project folder: ${ROOT}. usa agentes em paralelo`)
+  expect(decodeURIComponent(opened!.at(-1)!)).toContain(`First move this chat to ${ROOT} (the change_directory tool); the app opens it with no folder. usa agentes em paralelo`)
   expect(toasts.at(-1)).toContain('click Trust workspace in the app')
   // the Codex switch without a codex command only explains itself
   await ui.press({ key: 'Codex: not installed' })
@@ -1080,14 +1080,14 @@ test('New chat opens a real chat on the draft and the board follows it: found by
   const url = decodeURIComponent(ran.find(argv => (argv.at(-1) ?? '').startsWith('claude://code/new?'))!.at(-1)!)
   const id = /\[crew-chat ([a-z0-9]+)\]/.exec(url)?.[1]
   expect(id).toBeDefined()
-  expect(url).toContain(`Project folder: ${ROOT}.`)
+  expect(url).toContain(`First move this chat to ${ROOT} (the change_directory tool)`)
   expect(toasts.at(-1)).toContain('click Trust workspace in the app')
   let text = JSON.stringify(await board.drawn())
   expect(text).toContain('implementa o onboarding inteiro')
   expect(text).toContain('waiting for Trust workspace and your Enter in the app')
   // the chat's transcript appears with the marker in its first message: the board binds it and reads its tail
   files['/home/t/.claude/projects/-tmp-project/s9.jsonl'] = [
-    JSON.stringify({ type: 'user', message: { role: 'user', content: `Project folder: ${ROOT}. implementa o onboarding inteiro\n\n[crew-chat ${id}]` } }),
+    JSON.stringify({ type: 'user', message: { role: 'user', content: `First move this chat to ${ROOT}. implementa o onboarding inteiro\n\n[crew-chat ${id}]` } }),
     JSON.stringify({ type: 'assistant', message: { role: 'assistant', model: 'claude-sonnet-5-5', content: [{ type: 'text', text: 'Onboarding done: three screens and two e-mails.' }], usage: { input_tokens: 1000, cache_read_input_tokens: 20000, cache_creation_input_tokens: 0, output_tokens: 500 } } }),
   ].join('\n')
   await clock.advance(10_000)
