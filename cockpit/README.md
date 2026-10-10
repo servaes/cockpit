@@ -105,7 +105,10 @@ in, each part separated by a thin line. Each section carries an icon and a colou
    command that could wipe files or history (a recursive or forced delete, a hard git reset,
    git clean, a force push, a migration) is measured with read-only helpers (find, du, git) and
    held here with Proceed / Cancel until you answer, for up to ten minutes, exactly as the
-   Caution guard always did. A hand-off Claude files with `mcp__cockpit__handoff` (an API key to
+   Caution guard always did. A small `rm` where losing it costs nothing runs without a hold
+   and is listed as let through: nothing to delete, or at most 50 files and 10 MB inside the
+   project or a temp folder. In bypass permissions mode the bar is 1,000 files and 500 MB,
+   anywhere. A top folder (`/`, the home folder or one just under it) is always held. A hand-off Claude files with `mcp__cockpit__handoff` (an API key to
    paste, a store form, a DNS record, a login, a payment) shows as a row with the value to paste
    under it and two buttons: **Open <site> ↗** (opens the page and puts the value on your
    clipboard) and **Done ✓** (tells Claude, and resumes a held Ship). The wrong-folder nudge is a
@@ -139,12 +142,20 @@ Claude reads and writes, search, sizes, double-click to open.
 
 Only the guard runs anything, and only the command you approve. The cache block makes
 model calls: one fork per keepwarm ping and one per handoff note, nothing else. The
-board adds two short sections to the system prompt (`cockpit:progress`, the task-list
-request; `cockpit:ship`, how to report a ship, file a hand-off and report a look); nothing else of the
-prompt is touched. The Ship buttons, Done, Move chat and Fix the rest send a short message as you;
+board adds three short sections to the system prompt (`cockpit:progress`, the task-list
+request; `cockpit:ship`, how to report a ship, file a hand-off and report a look;
+`cockpit:crew`, how to read a route note); nothing else of the prompt is touched. A message
+you send that calls for more than plain work here carries one short route note as context
+(`Cockpit route for this message: Helper · Haiku low ... Delegate this to one subagent`),
+from the same rule that lights the crew row; a reply like "ok" or "pode deploy" carries none.
+With the crew row's Codex switch on, a decision or a hard-to-undo step asks Claude for a
+read-only second opinion from Codex (`codex exec --sandbox read-only --ephemeral`, on a temp
+folder holding only the material it needs), and an image is made through Codex; Codex is
+found on PATH or inside the ChatGPT app. The Ship buttons, Done, Move chat and Fix the rest send a short message as you;
 nothing else is sent on its own. Note that the
-guard reads every line of a Bash call, heredoc text included: a line that starts
-with a risky command, even inside quoted text, is held.
+guard reads every line of a Bash call, the commands inside `$( )` and backquotes too; the
+body of a literal here-document (`<<'EOF'`) is the command's input and is skipped, while
+an expanding one (`<<EOF`) is read, since a `$( )` in it runs.
 
 ## What else is inside
 
