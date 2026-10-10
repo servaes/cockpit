@@ -455,7 +455,7 @@ test('a small rm where losing it costs nothing runs without a hold; bypass mode 
     gate = new Promise<void>(r => { release = r })
     const call = $.tool.call({ tool: 'Bash', command } as never)
     await clock.settle()
-    const heldNow = JSON.stringify(await ui.drawn()).includes('Held: rm -rf')
+    const heldNow = JSON.stringify(await ui.drawn()).includes('Held: rm')
     if (heldNow) await ui.press({ key: 'blast:cancel' })
     release()
     await call
@@ -473,6 +473,14 @@ test('a small rm where losing it costs nothing runs without a hold; bypass mode 
   // inside the project but big: held
   w.rmReport = '400 4096 1\n'
   expect(await runs('rm -rf build')).toBe(false)
+  // what Codex's review of the gentler guard found: each still deletes outside the project, so each is held
+  w.rmReport = '0 0 0\n'
+  expect(await runs('rm -f /tmp/nothing; rm -rf ~/Documents/build')).toBe(false)
+  w.rmReport = '2 2048 1\n./build/a.js\n./build/b.js\n'
+  expect(await runs("bash <<'EOF'\nrm -rf ~/Documents/build\nEOF")).toBe(false)
+  expect(await runs('command -- rm -rf ~/Documents/build')).toBe(false)
+  expect(await runs("r''m -rf ~/Documents/build")).toBe(false)
+  expect(await runs('false && cd /tmp; rm -rf build')).toBe(false)
   // in bypass mode the same two run, a huge one is still held, and so is a top folder
   await $.classic.UserPromptSubmit({ prompt: 'x', permission_mode: 'bypassPermissions' } as never)
   w.rmReport = '3 4096 1\n./a\n./b\n./c\n'
@@ -1421,10 +1429,14 @@ test('with Codex on, a decision gets a read-only second opinion from Codex and a
   expect(ctx).toContain('Codex 2nd opinion')
   expect(ctx).toContain("'/usr/local/bin/codex' exec --sandbox read-only --ephemeral")
   expect(ctx).toContain('never the whole repository')
+  // the prompt goes in on stdin through a quoted here-document: nothing in it runs in the shell
+  expect(ctx).toContain("- <<'CODEX_PROMPT'")
+  expect(ctx).toContain('leave out secrets, keys, tokens')
   expect(ctx).toContain('Codex is on.')
   ctx = await send('gera um logo pro app')
-  expect(ctx).toContain('Make the image through Codex')
+  expect(ctx).toContain('Make the image through Codex in a new empty temp folder')
   expect(ctx).toContain('--sandbox workspace-write')
+  expect(ctx).toContain("-C <that folder> - <<'CODEX_PROMPT'")
   expect(ctx).not.toContain('dangerously')
   const ui = await band($, 'desktop')
   await clock.settle()
