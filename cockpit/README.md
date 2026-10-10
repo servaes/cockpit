@@ -184,16 +184,21 @@ an expanding one (`<<EOF`) is read, since a `$( )` in it runs.
   Crew and Plan, plus the Codex switch. While you type, the route the draft calls for is lit and
   a line says the lane and why: the kind of work (hard-to-undo, architecture, image, video,
   chart, document, UI design, research, mechanical, build, fix, quick) sets the model and effort
-  it deserves and the specialist to use, then the place (`→ Plan · Fable high · Codex 2nd
+  it deserves and the specialist to use, then the place (`→ Plan · Opus high · Codex 2nd
   opinion (hard to undo: plan first, then run)`, `→ Here · Sonnet medium · dataviz (a chart)`).
-  A rebase always plans first; a decision in a chat below Fable points to a new chat on Fable
-  rather than switching here and losing the cache; mechanical work and research go to a worker;
-  a long new build in a chat past 80k tokens goes to a new chat. A button only rewrites the
+  A rebase always plans first; a decision in a chat below Opus points to a new chat on Opus
+  rather than switching here and losing the cache; mechanical work and research go to a worker,
+  but only from a chat dearer than the worker; a long new build in a chat on Opus or Fable past
+  80k tokens goes to a new chat; Crew lights only when you ask for the crew, agents or parallel
+  work, or list a build in three or more parts. The words come from real prompts in Portuguese
+  and English. The rules and the benchmark behind them (five tasks, three ways, measured cost
+  and a blind judge) are in [docs/crew-2.0-prd.md](docs/crew-2.0-prd.md). A button only rewrites the
   draft (Helper puts a delegate-to-one-cheap-subagent ask before it, Crew puts `/cockpit:crew`,
   Plan the plan-first ask, Here takes any of those off) or, for New chat, writes this chat's
   handoff note (the fresh one when there is one, else one fork over the warm cache) and opens
   the app's new-chat link on the draft, naming the project folder and the note to read first:
-  you approve the new chat in the app and press Enter there. Nothing is sent. At most ten crew
+  you click Trust workspace in the app and press Enter there; the new chat moves itself to the
+  project folder. Nothing is sent. At most ten crew
   chats at a time.
 - **Crew chats**, a card under Agents: every chat New chat opened, followed through the
   transcript the app writes for it (found by a marker in its first message): waiting for your
