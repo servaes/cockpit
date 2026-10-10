@@ -40,7 +40,7 @@ const DIRS: Dirs = {
 }
 
 type ForkAnswer = { text?: string; read: number; write: number; out?: number }
-type World = { usage?: unknown; dirs?: Dirs; files?: Record<string, string>; opens?: unknown[]; toasts?: string[]; logs?: string[]; writes?: { path: string; text: string }[]; copied?: string[]; entered?: string[]; forks?: string[]; forkAnswers?: ForkAnswer[]; ran?: string[][]; gate?: () => Promise<void>; agents?: unknown[]; flow?: unknown; pricing?: string; draft?: { text: string }; store?: Record<string, unknown>; model?: { id: string }; fills?: string[]; surfaces?: string[] }
+type World = { rmReport?: string; codexPath?: string; usage?: unknown; dirs?: Dirs; files?: Record<string, string>; opens?: unknown[]; toasts?: string[]; logs?: string[]; writes?: { path: string; text: string }[]; copied?: string[]; entered?: string[]; forks?: string[]; forkAnswers?: ForkAnswer[]; ran?: string[][]; gate?: () => Promise<void>; agents?: unknown[]; flow?: unknown; pricing?: string; draft?: { text: string }; store?: Record<string, unknown>; model?: { id: string }; fills?: string[]; surfaces?: string[] }
 
 // The world beneath the mod: the session's figures, a small project on disk, no git repo, no fonts, no theme.
 function world(on: On, w: World = {}) {
@@ -108,10 +108,12 @@ function world(on: On, w: World = {}) {
       if (w.gate) await w.gate()
       return ok('')
     }
+    if (argv[0] === 'sh' && String(argv[2] ?? '').includes('command -v codex')) return ok(w.codexPath ? `${w.codexPath}\n` : '')
     if (argv[0] === 'sh') return ok('missing\n')
     if (argv[0] === 'uname') return ok('Linux\n')
     if (argv[0] === 'git') return { value: { exitCode: 128, stdout: '', stderr: 'not a git repository', isStdoutTruncated: false, isStderrTruncated: false } } as never
     // the guard's measuring script for rm: "<files> <bytes> <paths>" then the files
+    if (argv[0] === 'bash' && String(argv[2] ?? '').includes('compgen')) return ok(w.rmReport ?? '2 2048 1\n./build/a.js\n./build/b.js\n')
     if (argv[0] === 'bash') return ok('2 2048 1\n./build/a.js\n./build/b.js\n')
     return ok('')
   })
@@ -368,7 +370,7 @@ test('holds a risky command inside the Cockpit until Cancel is pressed, then lis
   await $.session.start(start)
   await clock.settle()
 
-  const call = $.tool.call({ tool: 'Bash', command: 'rm -rf build' } as never)
+  const call = $.tool.call({ tool: 'Bash', command: 'rm -rf ~/Documents/build' } as never)
   await clock.settle()
   const ui = await mount($, 'desktop')
   let text = JSON.stringify(await ui.drawn())
@@ -390,8 +392,10 @@ test('holds a risky command inside the Cockpit until Cancel is pressed, then lis
 })
 
 test("a here-document's body is the command's input, not commands: rm -rf inside one is not held", async ($, on) => {
+  // each held call waits on its own gate, opened once Cancel is pressed, as in the hold test above
   let release: () => void = () => undefined
-  const gate = new Promise<void>(r => { release = r })
+  let gate: Promise<void> = Promise.resolve()
+  const hold = () => { gate = new Promise<void>(r => { release = r }) }
   const clock = world(on, { gate: () => gate })
   let ran = 0
   on('tool.call', { tool: 'Bash' }, async () => { ran += 1; return { result: { stdout: 'ran', stderr: '', exitCode: 0 } } as never })
@@ -403,13 +407,85 @@ test("a here-document's body is the command's input, not commands: rm -rf inside
   expect(ran).toBe(1)
   const ui = await mount($, 'desktop')
   expect(JSON.stringify(await ui.drawn())).not.toContain('Held:')
+  // what Codex's second opinion found: each of these still hides a real rm -rf, so each is held
+  for (const command of [
+    'cat <<EOF\n$(rm -rf ~/Documents/build)\nEOF',
+    "echo '<<EOF'\nrm -rf ~/Documents/build",
+    'cat <<A <<B\nfirst\nA\nrm -rf ~/Documents/build\nB',
+    'cat <<<EOF\nrm -rf ~/Documents/build',
+    'echo $(rm -rf ~/Documents/build)',
+    'echo `rm -rf ~/Documents/build`',
+  ]) {
+    hold()
+    const call = $.tool.call({ tool: 'Bash', command } as never)
+    await clock.settle()
+    expect(JSON.stringify(await ui.drawn()), command).toContain('Held: rm -rf')
+    await ui.press({ key: 'blast:cancel' })
+    release()
+    await call
+  }
+  // a literal body with a second literal here-document after it: both bodies are input
+  const two = await $.tool.call({ tool: 'Bash', command: "cat <<'A' <<'B'\nrm -rf x\nA\nrm -rf y\nB\necho ok" } as never)
+  expect((two as { deny?: string }).deny).toBeUndefined()
   // the same words outside a here-document are still a risk
-  const held = $.tool.call({ tool: 'Bash', command: 'rm -rf build' } as never)
+  hold()
+  const held = $.tool.call({ tool: 'Bash', command: 'rm -rf ~/Documents/build' } as never)
   await clock.settle()
   expect(JSON.stringify(await ui.drawn())).toContain('Held: rm -rf')
   await ui.press({ key: 'blast:cancel' })
   release()
   await held
+})
+
+test('a small rm where losing it costs nothing runs without a hold; bypass mode raises the bar; a top folder is always held', async ($, on) => {
+  // a held call waits on its gate, opened after each try, as in the hold test above
+  let release: () => void = () => undefined
+  let gate: Promise<void> = Promise.resolve()
+  const w = { rmReport: '2 2048 1\n./build/a.js\n./build/b.js\n', gate: () => gate }
+  const clock = world(on, w)
+  let ran = 0
+  on('tool.call', { tool: 'Bash' }, async () => { ran += 1; return { result: { stdout: 'ran', stderr: '', exitCode: 0 } } as never })
+  // the engine's answer to the classic prompt hook: nothing to add
+  on('classic.UserPromptSubmit', async () => ({}) as never)
+  await $.session.start(start)
+  await clock.settle()
+  const ui = await mount($, 'desktop')
+  const runs = async (command: string) => {
+    const before = ran
+    gate = new Promise<void>(r => { release = r })
+    const call = $.tool.call({ tool: 'Bash', command } as never)
+    await clock.settle()
+    const heldNow = JSON.stringify(await ui.drawn()).includes('Held: rm -rf')
+    if (heldNow) await ui.press({ key: 'blast:cancel' })
+    release()
+    await call
+    return !heldNow && ran === before + 1
+  }
+  // inside the project, two small files: runs; nothing to delete: runs
+  expect(await runs('rm -rf build')).toBe(true)
+  w.rmReport = '0 0 0\n'
+  expect(await runs('rm -rf ~/Documents/old')).toBe(true)
+  w.rmReport = '1 0 1\n'
+  expect(await runs('rm -rf /tmp/x')).toBe(true)
+  // outside the project, small: held in the default mode
+  w.rmReport = '3 4096 1\n./a\n./b\n./c\n'
+  expect(await runs('rm -rf ~/Documents/build')).toBe(false)
+  // inside the project but big: held
+  w.rmReport = '400 4096 1\n'
+  expect(await runs('rm -rf build')).toBe(false)
+  // in bypass mode the same two run, a huge one is still held, and so is a top folder
+  await $.classic.UserPromptSubmit({ prompt: 'x', permission_mode: 'bypassPermissions' } as never)
+  w.rmReport = '3 4096 1\n./a\n./b\n./c\n'
+  expect(await runs('rm -rf ~/Documents/build')).toBe(true)
+  w.rmReport = '400 4096 1\n'
+  expect(await runs('rm -rf build')).toBe(true)
+  w.rmReport = '50000 9000000000 1\n'
+  expect(await runs('rm -rf build')).toBe(false)
+  w.rmReport = '3 4096 1\n'
+  expect(await runs('rm -rf ~/Documents')).toBe(false)
+  expect(await runs('rm -rf ~')).toBe(false)
+  // the ones let through are not counted as solved on the board
+  expect(JSON.stringify(await ui.drawn())).not.toContain('9 solved')
 })
 
 test('/cockpit <path> pins another folder in the same pane', async ($, on) => {
@@ -996,7 +1072,7 @@ test('the crew row stays above the prompt, typed or not: the draft lights the ro
   expect(JSON.stringify(await ui.drawn())).toContain('→ Plan · Fable high (hard to undo: plan first, then run)')
   draft.text = 'gera um logo pro app'
   await clock.advance(2000)
-  expect(JSON.stringify(await ui.drawn())).toContain('→ Here · needs Codex: on (an image)')
+  expect(JSON.stringify(await ui.drawn())).toContain('→ Here · needs Codex installed (an image)')
   draft.text = 'monta um gráfico da receita por mês'
   await clock.advance(2000)
   expect(JSON.stringify(await ui.drawn())).toContain('→ Here · Sonnet medium · dataviz (a chart)')
@@ -1010,7 +1086,7 @@ test('the crew row stays above the prompt, typed or not: the draft lights the ro
     ['run the tests and list the failing ones', '→ Helper · Haiku low (mechanical work'],
     ['rebase the branch onto main', '→ Plan · Fable high (hard to undo'],
     ['decide the architecture of the payments module', '→ Here · Fable high (architecture or a decision)'],
-    ['generate a logo for the app', '→ Here · needs Codex: on (an image)'],
+    ['generate a logo for the app', '→ Here · needs Codex installed (an image)'],
     ['build a chart of revenue by month', '→ Here · Sonnet medium · dataviz (a chart)'],
     ['look up how much the Max plan costs', '→ Helper · Sonnet medium · web search (research'],
     ['use agents in parallel to refactor the payments module', '→ Crew ·'],
@@ -1305,6 +1381,49 @@ test('"pode deploy" carries the ship checklist along as context', async ($, on) 
   const plain = (await $.prompt.submit(prompt('what does this function do?'))) as { context?: string[] }
   await clock.settle()
   expect(JSON.stringify(plain.context ?? [])).not.toContain('Cockpit Ship')
+})
+
+test('each sent message carries its route as a note Claude follows: a worker for mechanical work, the skill for a chart, nothing for a reply', async ($, on) => {
+  const clock = world(on, { usage: BIG })
+  await $.session.start(start)
+  await clock.settle()
+  await $.turn.complete(turn())
+  const note = async (text: string) => {
+    const r = (await $.prompt.submit(prompt(text))) as { context?: string[] }
+    await clock.settle()
+    return JSON.stringify(r.context ?? [])
+  }
+  // this chat is on Fable: mechanical work goes down to a Haiku worker
+  let ctx = await note('roda os testes e lista os que falham')
+  expect(ctx).toContain('Cockpit route for this message: Helper · Haiku low')
+  expect(ctx).toContain('the Agent tool with model \\"haiku\\"')
+  ctx = await note('monta um gráfico da receita por mês')
+  expect(ctx).toContain('Use dataviz.')
+  ctx = await note('faz o rebase da branch em cima da main')
+  expect(ctx).toContain('Plan first: reply with a short plan')
+  // an approval carries nothing; an image without Codex says Claude cannot make it
+  expect(await note('pode deploy')).not.toContain('Cockpit route')
+  expect(await note('gera um logo pro app')).toContain('Claude cannot make raster images')
+})
+
+test('with Codex on, a decision gets a read-only second opinion from Codex and an image is made through it', async ($, on) => {
+  const clock = world(on, { usage: BIG, store: { 'crew.codex': 'on' }, codexPath: '/usr/local/bin/codex' })
+  await $.session.start(start)
+  await clock.settle()
+  await $.turn.complete(turn())
+  const send = async (text: string) => JSON.stringify(((await $.prompt.submit(prompt(text))) as { context?: string[] }).context ?? [])
+  let ctx = await send('decide a arquitetura do módulo de pagamentos')
+  expect(ctx).toContain('Codex 2nd opinion')
+  expect(ctx).toContain("'/usr/local/bin/codex' exec --sandbox read-only --ephemeral")
+  expect(ctx).toContain('never the whole repository')
+  expect(ctx).toContain('Codex is on.')
+  ctx = await send('gera um logo pro app')
+  expect(ctx).toContain('Make the image through Codex')
+  expect(ctx).toContain('--sandbox workspace-write')
+  expect(ctx).not.toContain('dangerously')
+  const ui = await band($, 'desktop')
+  await clock.settle()
+  expect(JSON.stringify(await ui.drawn())).toContain('Codex: on')
 })
 
 test('a pasted screenshot asks for a visual bug report and a look', async ($, on) => {
