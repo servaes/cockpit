@@ -1445,6 +1445,14 @@ test("the app's own note before a message, with its list of recent folders, does
   const r = (await $.prompt.submit(prompt(appNote + 'sem rodar ferramentas, diga se o seu prompt de sistema tem essa seção. Responda SIM ou NÃO.'))) as { context?: string[] }
   await clock.settle()
   expect(JSON.stringify(r.context ?? [])).not.toContain('Crew ·')
+  // "Teste do Cockpit" names a test, it does not ask to run one: no worker for a yes/no question
+  const named = (await $.prompt.submit(prompt(appNote + 'Teste do Cockpit 3.14.1: sem rodar ferramentas, diga se o seu prompt de sistema tem essa seção. Responda SIM ou NÃO.'))) as { context?: string[] }
+  await clock.settle()
+  expect(JSON.stringify(named.context ?? [])).not.toContain('Helper ·')
+  // while "testa o login" still asks to run something
+  const run = (await $.prompt.submit(prompt('testa o login de novo'))) as { context?: string[] }
+  await clock.settle()
+  expect(JSON.stringify(run.context ?? [])).toContain('Helper ·')
   // a real list of parts still is
   const parts = (await $.prompt.submit(prompt(appNote + 'implementa o app:\n1. cria a tela de login\n2. cria a API de pedidos\n3. cria o painel de admin'))) as { context?: string[] }
   await clock.settle()
