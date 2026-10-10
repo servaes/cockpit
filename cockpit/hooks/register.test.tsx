@@ -1009,12 +1009,16 @@ test('the price follows the model picked under the prompt; a pricey message offe
   expect(text).toContain('"Opus 5.5"')
   expect(text).not.toContain('re-writes the chat')
   const onOpus = /"≈ ","([^"]+)"/.exec(text)?.[1]
-  // a decision in a chat on Opus points to a new chat on Fable: switching here would lose the cache
+  // a decision in a chat on Opus stays here on Opus high; Fable cost 8x more in the benchmark for no better review
   draft.text = 'decide a arquitetura do módulo de pagamentos'
   await clock.advance(2000)
-  expect(JSON.stringify(await ui.drawn())).toContain('→ New chat · Fable high (architecture or a decision deserves Fable')
+  expect(JSON.stringify(await ui.drawn())).toContain('→ Here · Opus high (architecture or a decision)')
   // handing work down only pays from a dearer chat: on Haiku, mechanical work stays here
   model.id = 'claude-haiku-5-5'
+  // and from a cheap chat a decision points up, to a new chat on Opus: switching here would lose the cache
+  draft.text = 'decide a arquitetura do módulo de pagamentos'
+  await clock.advance(2000)
+  expect(JSON.stringify(await ui.drawn())).toContain('→ New chat · Opus high (architecture or a decision deserves Opus')
   draft.text = 'roda os testes e lista os que falham'
   await clock.advance(2000)
   expect(JSON.stringify(await ui.drawn())).toContain('→ Here · Haiku low (mechanical work, and this chat is already on Haiku)')
@@ -1075,14 +1079,14 @@ test('the crew row stays above the prompt, typed or not: the draft lights the ro
   draft.text = 'implementa o onboarding:\n1. página de boas-vindas\n2. formulário de perfil\n3. e-mail de confirmação'
   await clock.advance(2000)
   expect(JSON.stringify(await ui.drawn())).toContain('→ Crew · Opus medium (a build in several parts')
-  // the kind of work sets the lane: a decision gets Fable high (this chat is on Fable, so it stays), a rebase plans first,
+  // the kind of work sets the lane: a decision gets Opus high (this chat is on Fable, so it stays), a rebase plans first,
   // an image needs Codex, a chart names dataviz, research goes to a Sonnet worker with web search
   draft.text = 'decide a arquitetura do módulo de pagamentos'
   await clock.advance(2000)
-  expect(JSON.stringify(await ui.drawn())).toContain('→ Here · Fable high (architecture or a decision)')
+  expect(JSON.stringify(await ui.drawn())).toContain('→ Here · Opus high (architecture or a decision)')
   draft.text = 'faz o rebase da branch em cima da main'
   await clock.advance(2000)
-  expect(JSON.stringify(await ui.drawn())).toContain('→ Plan · Fable high (hard to undo: plan first, then run)')
+  expect(JSON.stringify(await ui.drawn())).toContain('→ Plan · Opus high (hard to undo: plan first, then run)')
   draft.text = 'gera um logo pro app'
   await clock.advance(2000)
   expect(JSON.stringify(await ui.drawn())).toContain('→ Here · needs Codex installed (an image)')
@@ -1097,8 +1101,8 @@ test('the crew row stays above the prompt, typed or not: the draft lights the ro
   // the same in English
   for (const [text, line] of [
     ['run the tests and list the failing ones', '→ Helper · Haiku low (mechanical work'],
-    ['rebase the branch onto main', '→ Plan · Fable high (hard to undo'],
-    ['decide the architecture of the payments module', '→ Here · Fable high (architecture or a decision)'],
+    ['rebase the branch onto main', '→ Plan · Opus high (hard to undo'],
+    ['decide the architecture of the payments module', '→ Here · Opus high (architecture or a decision)'],
     ['generate a logo for the app', '→ Here · needs Codex installed (an image)'],
     ['build a chart of revenue by month', '→ Here · Sonnet medium · dataviz (a chart)'],
     ['look up how much the Max plan costs', '→ Helper · Sonnet medium · web search (research'],
@@ -1113,7 +1117,7 @@ test('the crew row stays above the prompt, typed or not: the draft lights the ro
     // this person's own words: approvals stay here, "sobe" is a deploy, "cadê" is a search, a bare "logo" is "soon", a question about a button is no research
     ['pode deploy', '→ Here (a short reply)'],
     ['boa, faz o 1 ai', '→ Here (a short reply)'],
-    ['sobe isso no site pls', '→ Plan · Fable high (hard to undo'],
+    ['sobe isso no site pls', '→ Plan · Opus high (hard to undo'],
     ['cadê o pacote que eu preciso carregar?', '→ Helper · Haiku low (mechanical work'],
     ['deixa o botão logo embaixo do título', '→ Here · Sonnet medium (a fix)'],
     ['mais curto, mais conciso, mais impactante', '→ Here · Sonnet medium · the write-human skill (writing)'],
@@ -1121,7 +1125,7 @@ test('the crew row stays above the prompt, typed or not: the draft lights the ro
     ['o que é esse botão de resume handoff?', '→ Here · Sonnet low (a quick answer)'],
     ['tira essa última frase do vídeo', '→ Here · Opus medium · Remotion (a video)'],
     ['traduz o roteiro pro inglês', '→ Here · Sonnet medium · the write-human skill (writing)'],
-    ['pensa aí comigo: vale a pena separar isso em outro mod?', '→ Here · Fable high (architecture or a decision)'],
+    ['pensa aí comigo: vale a pena separar isso em outro mod?', '→ Here · Opus high (architecture or a decision)'],
   ]) {
     draft.text = text
     await clock.advance(2000)
