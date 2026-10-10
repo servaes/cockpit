@@ -5956,14 +5956,24 @@ function routeNote(r: Routed, text: string, cwd: string): string | null {
   return `Cockpit route for this message: ${r.line.replace(/^→ /, '')}. ${say.join(' ')}${codexOn() ? ' Codex is on.' : ''}`.trim()
 }
 
+/**
+ * The person's own words in a sent message. The app can put its own notes before them, such as the
+ * scratch-workspace note with its bulleted list of recent folders, and those notes say nothing about the work.
+ */
+function ownWords(text: string): string {
+  return text.replace(/<system-reminder>[\s\S]*?(?:<\/system-reminder>|$)/g, '').trim()
+}
+
 /** The sent message gets its route note as context, from the composer only. */
 async function crewPromptSubmit($: EngineInterface, e: any): Promise<any> {
-  if (e.origin?.kind !== 'composer' || typeof e.text !== 'string' || e.text.trim().startsWith('/')) return e
+  if (e.origin?.kind !== 'composer' || typeof e.text !== 'string') return e
+  const text = ownWords(e.text)
+  if (text.startsWith('/')) return e
   const view = estimateView(await $.clock.now())
-  const r = routeOf(e.text, view?.level ?? null, C.ctx)
+  const r = routeOf(text, view?.level ?? null, C.ctx)
   if (!r) return e
   // the folder's name rides in the note Claude follows: cleaned like any untrusted text
-  const note = routeNote(r, e.text, cleanText(await $.session.cwd().catch(() => ''), 300))
+  const note = routeNote(r, text, cleanText(await $.session.cwd().catch(() => ''), 300))
   return note ? { ...e, context: [...(e.context ?? []), note] } : e
 }
 
@@ -6311,7 +6321,7 @@ async function codexToggle($: EngineInterface): Promise<void> {
 /** What the sent message was taken for; the draft is gone once it is sent. */
 async function estimateSubmit($: EngineInterface, e: any): Promise<void> {
   if (e.origin?.kind !== 'composer' || typeof e.text !== 'string') return
-  const text = e.text.trim()
+  const text = ownWords(e.text)
   est.sent = text && (!text.startsWith('/') || text.startsWith('/cockpit:crew')) ? profileOf(text) : null
   await estimateDraft($, '')
 }

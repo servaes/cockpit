@@ -1433,6 +1433,24 @@ test('each sent message carries its route as a note Claude follows: a worker for
   expect(await note('gera um logo pro app')).toContain('Claude cannot make raster images')
 })
 
+test("the app's own note before a message, with its list of recent folders, does not make a question crew-sized", async ($, on) => {
+  const clock = world(on, { usage: BIG })
+  await $.session.start(start)
+  await clock.settle()
+  await $.turn.complete(turn())
+  const appNote =
+    '<system-reminder>\nThe user started this session without choosing a project folder, so build in the scratch workspace.\n' +
+    '<recent-project-folders>\n- /Users/x/code/cockpit\n- /Users/x/code/site\n- /Users/x/code/app\n- /Users/x/code\n</recent-project-folders>\n' +
+    'If the request needs no existing project (a quick script, a question, a throwaway prototype), work in the scratch workspace.\n</system-reminder>\n\n\n'
+  const r = (await $.prompt.submit(prompt(appNote + 'sem rodar ferramentas, diga se o seu prompt de sistema tem essa seção. Responda SIM ou NÃO.'))) as { context?: string[] }
+  await clock.settle()
+  expect(JSON.stringify(r.context ?? [])).not.toContain('Crew ·')
+  // a real list of parts still is
+  const parts = (await $.prompt.submit(prompt(appNote + 'implementa o app:\n1. cria a tela de login\n2. cria a API de pedidos\n3. cria o painel de admin'))) as { context?: string[] }
+  await clock.settle()
+  expect(JSON.stringify(parts.context ?? [])).toContain('Crew ·')
+})
+
 test('with Codex on, a decision gets a read-only second opinion from Codex and an image is made through it', async ($, on) => {
   const clock = world(on, { usage: BIG, store: { 'crew.codex': 'on' }, codexPath: '/usr/local/bin/codex' })
   await $.session.start(start)
