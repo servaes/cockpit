@@ -177,12 +177,16 @@ an expanding one (`<<EOF`) is read, since a `$( )` in it runs.
   is drawn whole, up to 400 rows); the terminal keeps moving the tree row by row under the cards.
 - **Everything in one pane:** agents, goals and Replay draw inside the Cockpit Board; nothing opens a pane of its own.
 - **Next steps** (from Thariq Shihipar's next-steps, MIT): after a turn, up to three likely next
-  prompts above the input (`next:`, press 1, 2 or 3 to put one in the prompt box as a draft, 0 to
-  dismiss; the first is also the Tab ghost text). Settings: `minAnswerChars`, `suggestSkills`.
+  prompts above the input, under "What you could do next" (press 1, 2 or 3 to put one in the
+  prompt box as a draft, 0 to hide them; the first is also the Tab ghost text). Settings: `minAnswerChars`, `suggestSkills`.
   The separate `next-steps@claude-community` plugin is disabled on purpose (it would draw twice).
-- **The crew row, always above the prompt** (`⚑ Crew`, typed or not): Here, Helper, New chat,
-  Crew and Plan, plus the Codex switch. While you type, the route the draft calls for is lit and
-  a line says the lane and why: the kind of work (hard-to-undo, architecture, image, video,
+- **The crew row, always above the prompt** (`◆ Agent routing suggestion`, typed or not): five
+  buttons named for what they do (Do it here, Hand to a cheaper agent, Open in a new chat, Split
+  across agents, Plan first, then build), plus "Codex second opinion" with Turn on and Turn off.
+  While you type, the route the draft calls for moves up to "Suggested:", lit, with the lane
+  spelled out (`Opus · high effort · the design skill`) and a "Why:" line; the others sit under
+  "Or run it another way". The route note a sent message carries keeps the short names (Here,
+  Helper, New chat, Crew, Plan) and the arrow form below. The kind of work (hard-to-undo, architecture, image, video,
   chart, document, UI design, research, mechanical, build, fix, quick) sets the model and effort
   it deserves and the specialist to use, then the place (`→ Plan · Opus high · Codex 2nd
   opinion (hard to undo: plan first, then run)`, `→ Here · Sonnet medium · dataviz (a chart)`).

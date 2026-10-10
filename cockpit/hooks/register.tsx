@@ -5594,24 +5594,47 @@ async function drawBand($: EngineInterface, e: any, next: any): Promise<unknown>
   const dot = <Text dimColor>{'  ·  '}</Text>
   const usdColor = view ? BAND_LEVEL_COLOR[view.level] : undefined
   const lit = routeOf(est.draft, view?.level ?? null, C.ctx)
-  const codexLabel = crew.codexInstalled === false ? 'Codex: not installed' : `Codex: ${crew.codex}`
+  const codexState = crew.codexInstalled === false ? 'not installed' : crew.codex
+  const routeButton = (route: Route) => (
+    <Box key={`route:${route}`} marginRight={1}>
+      <Button label={ROUTE_BUTTON[route]} {...(lit?.route === route ? { variant: 'primary' as const } : {})} onPress={() => void crewPress($, route)} />
+    </Box>
+  )
   return (
     <Box flexDirection="column">
       {below ?? null}
       <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor={BAND_ACCENT} borderDimColor paddingX={1}>
-        <Box key="crew" flexDirection="row">
-          <Text color={BAND_ACCENT} bold>⚑ Crew </Text>
-          {ROUTES.map(route => (
-            <Box key={`route:${route}`} marginLeft={1}>
-              <Button label={ROUTE_LABEL[route]} {...(lit?.route === route ? { variant: 'primary' as const } : {})} onPress={() => void crewPress($, route)} />
+        <Text color={BAND_ACCENT} bold>◆ Agent routing suggestion</Text>
+        {lit ? (
+          <Box key="suggested" flexDirection="column">
+            <Box flexDirection="row">
+              <Text>Suggested: </Text>
+              {routeButton(lit.route)}
+              {lit.detail ? <Text dimColor>{lit.detail}</Text> : null}
             </Box>
-          ))}
-          {dot}
-          <Button label={codexLabel} {...(crew.codexInstalled ? {} : { dimColor: true })} onPress={() => void codexToggle($)} />
+            <Text dimColor>{`  Why: ${lit.why}`}</Text>
+            <Text dimColor>Or run it another way:</Text>
+          </Box>
+        ) : (
+          <Text dimColor>Type your message to get a suggestion, or pick how to run it:</Text>
+        )}
+        <Box key="routes" flexDirection="row" flexWrap="wrap">
+          {ROUTES.filter(route => route !== lit?.route).map(routeButton)}
         </Box>
-        {lit ? <Text dimColor>{`  ${lit.line}`}</Text> : null}
-        {steps.kind === 'loading' ? <Box marginTop={1}><Text dimColor>✦ next steps…</Text></Box> : null}
-        {steps.kind === 'offer' ? <Box marginTop={1}><Text color={BAND_ACCENT} bold>✦ Next steps</Text></Box> : null}
+        <Box key="codex" flexDirection="row">
+          <Text dimColor>Codex second opinion: </Text>
+          <Text>{codexState}</Text>
+          <Box marginLeft={2}>
+            <Button
+              key="codex"
+              label={crew.codexInstalled === false ? 'Why not?' : crew.codex === 'on' ? 'Turn off' : 'Turn on'}
+              {...(crew.codexInstalled ? {} : { dimColor: true })}
+              onPress={() => void codexToggle($)}
+            />
+          </Box>
+        </Box>
+        {steps.kind === 'loading' ? <Box marginTop={1}><Text dimColor>◆ finding what you could do next…</Text></Box> : null}
+        {steps.kind === 'offer' ? <Box marginTop={1}><Text color={BAND_ACCENT} bold>◆ What you could do next</Text></Box> : null}
         {steps.kind === 'offer'
           ? steps.items.map((item, index) => (
               <Box key={`next:${index}`} marginLeft={2}>
@@ -5632,7 +5655,7 @@ async function drawBand($: EngineInterface, e: any, next: any): Promise<unknown>
           : null}
         {steps.kind === 'offer' ? (
           <Box key="next:dismiss" marginLeft={2}>
-            <Button hotkey="0" plain dimColor label="dismiss" onPress={() => nextShow($, { kind: 'hidden' })} />
+            <Button hotkey="0" plain dimColor label="Hide these" onPress={() => nextShow($, { kind: 'hidden' })} />
           </Box>
         ) : null}
         {view ? (
@@ -5746,6 +5769,8 @@ const PLAN_FIRST = 'Plan first: before changing anything, reply with a short pla
 type Route = 'here' | 'helper' | 'chat' | 'crew' | 'plan'
 const ROUTES: Route[] = ['here', 'helper', 'chat', 'crew', 'plan']
 const ROUTE_LABEL: Record<Route, string> = { here: 'Here', helper: 'Helper', chat: 'New chat', crew: 'Crew', plan: 'Plan' }
+// What the band's buttons say: the route as an action anyone can read. The notes keep the short names above.
+const ROUTE_BUTTON: Record<Route, string> = { here: 'Do it here', helper: 'Hand to a cheaper agent', chat: 'Open in a new chat', crew: 'Split across agents', plan: 'Plan first, then build' }
 // Put before a draft by Helper: one cheap subagent does the work, this chat only briefs it and reads its result.
 const HELPER_PREFIX =
   'Delegate: do this through one cheap subagent (the Agent tool with model "haiku" for mechanical work, "sonnet" for standard work) ' +
@@ -5850,7 +5875,7 @@ function chatFamily(): Family | null {
   return (Object.keys(FAMILY_RANK) as Family[]).find(f => m.includes(f)) ?? null
 }
 
-type Routed = { route: Route; kind: Kind; lane: Lane; why: string; line: string }
+type Routed = { route: Route; kind: Kind; lane: Lane; why: string; line: string; detail: string }
 
 /** Where the draft should run, on what, and why: its kind, the lane that kind deserves, then the place; null when nothing is typed. */
 function routeOf(text: string, level: Level | null, ctx: number): Routed | null {
@@ -5862,8 +5887,11 @@ function routeOf(text: string, level: Level | null, ctx: number): Routed | null 
     const kind = route === 'crew' ? 'build' : read
     const lane = laneOf(kind)
     const on = lane.model === 'codex' || why === 'a short reply' ? '' : `${FAMILY_NAME[lane.model]} ${lane.effort}`
-    const line = `→ ${ROUTE_LABEL[route]}${on ? ` · ${on}` : ''}${lane.specialist && on ? ` · ${lane.specialist}` : lane.specialist && lane.model === 'codex' ? ` · ${lane.specialist}` : ''} (${why})`
-    return { route, kind, lane, why, line }
+    const specialist = lane.specialist && (on || lane.model === 'codex') ? lane.specialist : ''
+    const line = `→ ${ROUTE_LABEL[route]}${on ? ` · ${on}` : ''}${specialist ? ` · ${specialist}` : ''} (${why})`
+    // The band spells the same lane out: "Opus · high effort · the design skill".
+    const detail = [on ? `${FAMILY_NAME[lane.model as Family]} · ${lane.effort} effort` : '', specialist].filter(Boolean).join(' · ')
+    return { route, kind, lane, why, line, detail }
   }
   if (t.startsWith(CREW_PREFIX.trim())) return done('crew', 'a crew run')
   if (t.startsWith(PLAN_FIRST.trim())) return done('plan', 'a plan first')

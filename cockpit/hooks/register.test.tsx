@@ -32,6 +32,18 @@ const RUNS = [
   { id: 'a2', type: 'general-purpose', description: 'Write the tests', model: 'claude-sonnet-5-5', status: 'running', startedAt: 50_000, tokens: 30_000, costUsd: 0.2, steps: 2, round: 1, contextTokens: 0, contextMax: 0 },
 ]
 
+// What the band's buttons say for each route, by the short name the route notes use.
+const BUTTON: Record<string, string> = { Here: 'Do it here', Helper: 'Hand to a cheaper agent', 'New chat': 'Open in a new chat', Crew: 'Split across agents', Plan: 'Plan first, then build' }
+/** The band shows a route note's line ("→ Helper · Haiku low (why") as its lit button, the lane spelled out, and the why. */
+function expectRoute(text: string, line: string): void {
+  const m = /^→ (Here|Helper|New chat|Crew|Plan)(?: ·(?: (.*?))?)?(?: \((.*))?$/s.exec(line)
+  if (!m) throw new Error(`not a route line: ${line}`)
+  const [, name, detail, why] = m
+  expect(text).toContain(`"label":"${BUTTON[name]}","variant":"primary"`)
+  if (detail) expect(text).toContain(detail.replace(/^(Haiku|Sonnet|Opus|Fable) (low|medium|high)/, '$1 · $2 effort'))
+  if (why) expect(text).toContain(`Why: ${why.replace(/\)$/, '')}`)
+}
+
 type Dirs = Record<string, [string, 'file' | 'dir'][]>
 const DIRS: Dirs = {
   [ROOT]: [['src', 'dir'], ['README.md', 'file'], ['notes.md', 'file']],
@@ -1017,16 +1029,16 @@ test('the price follows the model picked under the prompt; a pricey message offe
   // a decision in a chat on Opus stays here on Opus high; Fable cost 8x more in the benchmark for no better review
   draft.text = 'decide a arquitetura do módulo de pagamentos'
   await clock.advance(2000)
-  expect(JSON.stringify(await ui.drawn())).toContain('→ Here · Opus high (architecture or a decision)')
+  expectRoute(JSON.stringify(await ui.drawn()), '→ Here · Opus high (architecture or a decision)')
   // handing work down only pays from a dearer chat: on Haiku, mechanical work stays here
   model.id = 'claude-haiku-5-5'
   // and from a cheap chat a decision points up, to a new chat on Opus: switching here would lose the cache
   draft.text = 'decide a arquitetura do módulo de pagamentos'
   await clock.advance(2000)
-  expect(JSON.stringify(await ui.drawn())).toContain('→ New chat · Opus high (architecture or a decision deserves Opus')
+  expectRoute(JSON.stringify(await ui.drawn()), '→ New chat · Opus high (architecture or a decision deserves Opus')
   draft.text = 'roda os testes e lista os que falham'
   await clock.advance(2000)
-  expect(JSON.stringify(await ui.drawn())).toContain('→ Here · Haiku low (mechanical work, and this chat is already on Haiku)')
+  expectRoute(JSON.stringify(await ui.drawn()), '→ Here · Haiku low (mechanical work, and this chat is already on Haiku)')
   model.id = 'claude-opus-5-5'
   draft.text = 'corrige o bug do login'
   await clock.advance(2000)
@@ -1040,7 +1052,7 @@ test('the price follows the model picked under the prompt; a pricey message offe
   expect(text).toContain('This looks expensive (up to $')
   expect(text).toContain('on Sonnet 5.5 (/model)')
   // the crew row's Plan puts the ask for a plan before the draft
-  await ui.press({ key: 'Plan' })
+  await ui.press({ key: 'Plan first, then build' })
   expect(fills[0]).toStartWith('Plan first: before changing anything')
   expect(fills[0]).toEndWith('corrige o bug do login')
   draft.text = fills[0]
@@ -1063,45 +1075,47 @@ test('the crew row stays above the prompt, typed or not: the draft lights the ro
   await clock.settle()
   // nothing typed: the row is there, no route lit, no estimate; Codex is not installed in this world
   let text = JSON.stringify(await ui.drawn())
-  expect(text).toContain('⚑ Crew')
-  for (const label of ['Here', 'Helper', 'New chat', 'Crew', 'Plan']) expect(text).toContain(`"label":"${label}"`)
+  expect(text).toContain('◆ Agent routing suggestion')
+  expect(text).toContain('Type your message to get a suggestion')
+  for (const label of Object.values(BUTTON)) expect(text).toContain(`"label":"${label}"`)
   expect(text).not.toContain('"variant":"primary"')
   expect(text).not.toContain('This message')
-  expect(text).toContain('Codex: not installed')
+  expect(text).toContain('"not installed"')
+  expect(text).toContain('"label":"Why not?"')
   // mechanical work lights Helper; parallel work lights Crew
   draft.text = 'roda os testes e lista os que falham'
   await clock.advance(2000)
   text = JSON.stringify(await ui.drawn())
-  expect(text).toContain('"label":"Helper","variant":"primary"')
-  expect(text).toContain('→ Helper · Haiku low (mechanical work')
+  expect(text).toContain('"label":"Hand to a cheaper agent","variant":"primary"')
+  expectRoute(text, '→ Helper · Haiku low (mechanical work')
   draft.text = 'usa agentes em paralelo pra refatorar o módulo de pagamentos'
   await clock.advance(2000)
-  expect(JSON.stringify(await ui.drawn())).toContain('"label":"Crew","variant":"primary"')
+  expect(JSON.stringify(await ui.drawn())).toContain('"label":"Split across agents","variant":"primary"')
   // mechanical words that lean on this conversation stay here; a build in three listed parts is crew-sized
   draft.text = 'lista as mudanças que você fez acima'
   await clock.advance(2000)
-  expect(JSON.stringify(await ui.drawn())).toContain('"label":"Here","variant":"primary"')
+  expect(JSON.stringify(await ui.drawn())).toContain('"label":"Do it here","variant":"primary"')
   draft.text = 'implementa o onboarding:\n1. página de boas-vindas\n2. formulário de perfil\n3. e-mail de confirmação'
   await clock.advance(2000)
-  expect(JSON.stringify(await ui.drawn())).toContain('→ Crew · Opus medium (a build in several parts')
+  expectRoute(JSON.stringify(await ui.drawn()), '→ Crew · Opus medium (a build in several parts')
   // the kind of work sets the lane: a decision gets Opus high (this chat is on Fable, so it stays), a rebase plans first,
   // an image needs Codex, a chart names dataviz, research goes to a Sonnet worker with web search
   draft.text = 'decide a arquitetura do módulo de pagamentos'
   await clock.advance(2000)
-  expect(JSON.stringify(await ui.drawn())).toContain('→ Here · Opus high (architecture or a decision)')
+  expectRoute(JSON.stringify(await ui.drawn()), '→ Here · Opus high (architecture or a decision)')
   draft.text = 'faz o rebase da branch em cima da main'
   await clock.advance(2000)
-  expect(JSON.stringify(await ui.drawn())).toContain('→ Plan · Opus high (hard to undo: plan first, then run)')
+  expectRoute(JSON.stringify(await ui.drawn()), '→ Plan · Opus high (hard to undo: plan first, then run)')
   draft.text = 'gera um logo pro app'
   await clock.advance(2000)
-  expect(JSON.stringify(await ui.drawn())).toContain('→ Here · needs Codex installed (an image)')
+  expectRoute(JSON.stringify(await ui.drawn()), '→ Here · needs Codex installed (an image)')
   draft.text = 'monta um gráfico da receita por mês'
   await clock.advance(2000)
-  expect(JSON.stringify(await ui.drawn())).toContain('→ Here · Sonnet medium · dataviz (a chart)')
+  expectRoute(JSON.stringify(await ui.drawn()), '→ Here · Sonnet medium · dataviz (a chart)')
   draft.text = 'pesquisa quanto custa o plano Max hoje'
   await clock.advance(2000)
-  expect(JSON.stringify(await ui.drawn())).toContain('→ Helper · Sonnet medium · web search (research')
-  await ui.press({ key: 'Helper' })
+  expectRoute(JSON.stringify(await ui.drawn()), '→ Helper · Sonnet medium · web search (research')
+  await ui.press({ key: 'Hand to a cheaper agent' })
   expect(fills.pop()).toStartWith('Delegate: do this through one cheap subagent (the Agent tool with model "sonnet", using web search)')
   // the same in English
   for (const [text, line] of [
@@ -1134,30 +1148,30 @@ test('the crew row stays above the prompt, typed or not: the draft lights the ro
   ]) {
     draft.text = text
     await clock.advance(2000)
-    expect(JSON.stringify(await ui.drawn())).toContain(line)
+    expectRoute(JSON.stringify(await ui.drawn()), line)
   }
   draft.text = 'usa agentes em paralelo pra refatorar o módulo de pagamentos'
   await clock.advance(2000)
   // Helper and Crew put their prefix before the draft; Here takes it off again
-  await ui.press({ key: 'Helper' })
+  await ui.press({ key: 'Hand to a cheaper agent' })
   expect(fills[0]).toStartWith('Delegate: do this through one cheap subagent')
   expect(fills[0]).toEndWith('refatorar o módulo de pagamentos')
   draft.text = fills[0]
   await clock.advance(2000)
-  await ui.press({ key: 'Crew' })
+  await ui.press({ key: 'Split across agents' })
   expect(fills[1]).toBe('/cockpit:crew usa agentes em paralelo pra refatorar o módulo de pagamentos')
   draft.text = fills[1]
   await clock.advance(2000)
-  await ui.press({ key: 'Here' })
+  await ui.press({ key: 'Do it here' })
   expect(fills[2]).toBe('usa agentes em paralelo pra refatorar o módulo de pagamentos')
   // New chat opens the app's new-chat link on the draft, naming the project folder; nothing is sent
-  await ui.press({ key: 'New chat' })
+  await ui.press({ key: 'Open in a new chat' })
   const opened = ran.find(argv => (argv.at(-1) ?? '').startsWith('claude://code/new?'))
   expect(opened).toBeDefined()
   expect(decodeURIComponent(opened!.at(-1)!)).toContain(`First move this chat to ${ROOT} (the change_directory tool); the app opens it with no folder. usa agentes em paralelo`)
   expect(toasts.at(-1)).toContain('click Trust workspace in the app')
   // the Codex switch without a codex command only explains itself
-  await ui.press({ key: 'Codex: not installed' })
+  await ui.press({ key: 'codex' })
   expect(toasts.at(-1)).toContain('Codex is not installed here')
 })
 
@@ -1177,7 +1191,7 @@ test('New chat opens a real chat on the draft and the board follows it: found by
   expect(JSON.stringify(await board.drawn())).toContain('Crew chats none yet')
   draft.text = 'implementa o onboarding inteiro, com telas e e-mails'
   await clock.advance(2000)
-  await ui.press({ key: 'New chat' })
+  await ui.press({ key: 'Open in a new chat' })
   await clock.settle()
   // no handoff note could be written in this world (nothing to fork), so the chat opens on the draft alone, with its marker
   const url = decodeURIComponent(ran.find(argv => (argv.at(-1) ?? '').startsWith('claude://code/new?'))!.at(-1)!)
@@ -1214,9 +1228,9 @@ test('next steps and the estimate share one box above the prompt: the suggestion
   draft.text = 'corrige o bug do login'
   await clock.advance(2000)
   const text = JSON.stringify(await ui.drawn())
-  expect(text).toContain('✦ Next steps')
+  expect(text).toContain('◆ What you could do next')
   expect(text).toContain('Run the tests')
-  expect(text).toContain('"label":"dismiss"')
+  expect(text).toContain('"label":"Hide these"')
   expect(text).toContain('"This message "')
   // one bordered box, the suggestions first and the estimate last, nearest the prompt
   expect(text.split('"borderStyle":"round"').length).toBe(2)
@@ -1480,7 +1494,9 @@ test('with Codex on, a decision gets a read-only second opinion from Codex and a
   expect(ctx).not.toContain('dangerously')
   const ui = await band($, 'desktop')
   await clock.settle()
-  expect(JSON.stringify(await ui.drawn())).toContain('Codex: on')
+  const drawn = JSON.stringify(await ui.drawn())
+  expect(drawn).toContain('Codex second opinion: ')
+  expect(drawn).toContain('"label":"Turn off"')
 })
 
 test('a pasted screenshot asks for a visual bug report and a look', async ($, on) => {
