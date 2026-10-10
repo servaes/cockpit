@@ -868,6 +868,11 @@ test('asks Claude, in the system prompt, to keep a task list on long work', asyn
   // on big work it offers /cockpit:crew in a line and waits; it never starts it unasked
   expect(mine?.text).toContain('/cockpit:crew')
   expect(mine?.text).toContain('never start /cockpit:crew on your own')
+  // and how to read a route note: the crew section, once per chat
+  const crewSection = (r as { sections: { id: string; scope: string; text: string }[] }).sections.find(s => s.id === 'cockpit:crew')
+  expect(crewSection?.scope).toBe('session')
+  expect(crewSection?.text).toStartWith('Cockpit routes each message by the kind of work it asks for.')
+  expect(crewSection?.text).toContain('never send Codex something you declined')
 })
 
 test('the Create goal box starts a goal, then goes away while it runs', async ($, on) => {
