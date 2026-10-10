@@ -5759,7 +5759,11 @@ function helperPrefix(model: Family, specialist: string): string {
 // A build listed in three or more numbered or bulleted parts is crew-sized.
 const MANY_PARTS = /(?:^|\n)\s*(?:\d+[.)]|[-*•])\s+\S[^\n]*(?:\n\s*(?:\d+[.)]|[-*•])\s+\S[^\n]*){2,}/
 // A draft that leans on this conversation cannot leave it.
-const CONTEXT_WORDS = /\b(isso|isto|esse|essa|aquele|aquela|acima|this|that|it|above|here|aqui)\b/
+// English "it", "this" and "here" mostly point inside the message itself ("fix it"), so only explicit
+// pointers back at the conversation count; the Portuguese demonstratives do point back.
+const CONTEXT_WORDS = /\b(isso|isto|esse|essa|aquele|aquela|acima|above|what you (?:just )?(?:did|said|wrote|made|found)|o que (?:voc[êe]|vc) (?:fez|disse|escreveu|achou)|like before|as before|como antes|this conversation|essa conversa)\b/
+// Asking for the crew, agents or parallel work, as opposed to naming them: "the Crew chats card" asks for nothing.
+const CREW_INTENT = /^\/cockpit:crew\b|\b(?:us[ae]r?|use|with|com|chama|call|roda|run|bota|put)\s+(?:o |a |os |as |the |a |some |uns |umas )?(?:crew|agent\w*|agentes|subagent\w*|subagentes|workers?)\b|\b(?:em paralelo|in parallel|paraleliz\w*|parallelize|fan.?out)\b/
 // Past this many tokens, a chat re-reads enough per message that a long new task is cheaper in a fresh one.
 const HEAVY_CHAT_TOKENS = 80_000
 const crew = { codex: 'off' as 'off' | 'on', codexInstalled: null as boolean | null, codexBin: '' }
@@ -5831,7 +5835,9 @@ function kindOf(text: string): Kind {
   const lower = text.toLowerCase()
   for (const [kind, re] of KIND_WORDS) if (re.test(lower)) return kind
   if (text.length < 300 && HELPER_WORDS.test(lower)) return 'mechanical'
-  const profile = profileOf(text)
+  // a crew or agents only named ("the Crew chats card") says nothing about the work: read the rest
+  const named = profileOf(text) === 'agents' && !CREW_INTENT.test(lower)
+  const profile = profileOf(named ? text.replace(/\b(crew|agent\w*|agentes|subagent\w*|subagentes|workflows?)\b/gi, '') : text)
   return profile === 'build' || profile === 'agents' ? 'build' : profile === 'edit' ? 'fix' : 'quick'
 }
 
@@ -5865,7 +5871,7 @@ function routeOf(text: string, level: Level | null, ctx: number): Routed | null 
   const here = chatFamily()
   const kind = read
   if (kind === 'risky') return done('plan', `${KIND_WORD.risky}: plan first, then run`)
-  if (profile === 'agents') return done('crew', 'asks for parallel work')
+  if (CREW_INTENT.test(t.toLowerCase())) return done('crew', 'asks for parallel work')
   if (profile === 'build' && MANY_PARTS.test(t)) return done('crew', 'a build in several parts: the crew splits and checks it')
   if (kind === 'think') {
     if (here && FAMILY_RANK[here] < FAMILY_RANK.fable && !leans) return done('chat', `${KIND_WORD.think} deserves Fable; switching here would lose the cache`)

@@ -1105,6 +1105,11 @@ test('the crew row stays above the prompt, typed or not: the draft lights the ro
     ['use agents in parallel to refactor the payments module', '→ Crew ·'],
     ['implement onboarding:\n1. welcome page\n2. profile form\n3. confirmation email', '→ Crew · Opus medium (a build in several parts'],
     ['list the changes you made above', '→ Here ·'],
+    // what the benchmark caught: naming the Crew chats card asks for no crew, and "fix it" points inside the message
+    // (a long fix over this 200k chat on Fable reads as expensive: a fix's lane, planned first, not a crew)
+    ['The Crew chats card says nothing is open while chats are working. The cause is in crewRunning. Fix it.', '→ Plan · Sonnet medium (expensive'],
+    ['run the tests and fix it if anything fails', '→ Helper · Haiku low (mechanical work'],
+    ['fix what you just found in the login', '→ Here · Sonnet medium (a fix)'],
     // this person's own words: approvals stay here, "sobe" is a deploy, "cadê" is a search, a bare "logo" is "soon", a question about a button is no research
     ['pode deploy', '→ Here (a short reply)'],
     ['boa, faz o 1 ai', '→ Here (a short reply)'],
