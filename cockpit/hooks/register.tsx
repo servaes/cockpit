@@ -147,6 +147,20 @@ function turnGuess(now: number): { kind: 'guess'; ms: number; n: number } | { ki
 }
 let tasksStartedAt = 0
 const taskDoneAt = new Map<string, number>()
+// The chat the task list above belongs to, and when its latest main turn began.
+let lastSessionId = ''
+let lastTurnAt = 0
+// Whether this module ran its start. A plugin reload mid-chat loads it fresh with no session.start, so the
+// first sign of life (the band drawing, a turn, typing) starts it, the board included.
+let moduleStarted = false
+let reviving = false
+const REVIVE_WAIT_MS = 3000
+
+function clearTasks(): void {
+  autoTasks = []
+  tasksStartedAt = 0
+  taskDoneAt.clear()
+}
 
 // The board beside the chat shows Claude's task list as the Progress bar; this asks for one on long work.
 const PROGRESS_SECTION = {
@@ -365,7 +379,8 @@ async function drawCockpit($: EngineInterface, e: any, next: any): Promise<unkno
     )
 
     // Progress: savvy-progress's band and plan for a flow; else Claude's task list; else this chat's goal; else a nudge.
-    const mine = myGoal
+    // Progress shows a finished goal only until the next message; the Goals card keeps it longer.
+    const mine = myGoal && (myGoal.status === 'running' || (myGoal.endedAt || myGoal.updatedAt || 0) >= lastTurnAt) ? myGoal : null
     let progressRow: GaugeRow
     let planItems: (CardRow & { k: string })[] = []
     // How long the work in Progress still needs, from the pace so far: the crew's tasks, Claude's task
@@ -3224,6 +3239,7 @@ async function startGoalMeter($: EngineInterface): Promise<void> {
       $.ui.log(`goal-meter: the task tool did not register (${err && err.message ? err.message : err})`)
     }
     commandName = (await registerCommand($)) || commandName
+    G = null // the last chat's goal, when this module outlived it; restore brings back this chat's own
     await restore($)
     $.clock.every(15000, async () => {
       now = await $.clock.now()
@@ -3650,6 +3666,38 @@ async function replayNow($: EngineInterface): Promise<void> {
 // The hooks: one per event. Where several parts listen, the hook calls them in turn.
 // =============================================================================
 
+async function startAll($: EngineInterface, e: any, language: unknown): Promise<void> {
+  moduleStarted = true
+  // A new chat in the same process (/clear, a fresh session) keeps this module's variables: drop the last chat's tasks.
+  const id = await $.session.id()
+  if (id !== lastSessionId) {
+    if (lastSessionId) {
+      clearTasks()
+      Object.assign(turnPlan, { total: 0, done: 0, note: '' })
+      lastTurnAt = 0
+    }
+    lastSessionId = id
+  }
+  await startCockpit($, e)
+  await startFiletree($)
+  await startSavvy($, language)
+  await startGoalMeter($)
+  await cacheStart($)
+  await startShip($)
+}
+
+// After a plugin reload (a plugin update or install rewrites installed_plugins.json) the chat goes on
+// but session.start does not come again: start here. The wait leaves a new chat to its own session.start.
+function revive($: EngineInterface, language: unknown): void {
+  if (moduleStarted || reviving) return
+  reviving = true
+  $.clock.after(REVIVE_WAIT_MS, () => {
+    reviving = false
+    if (moduleStarted) return
+    void startAll($, { surface: 'reload', isInteractive: true }, language).catch(err => $.ui.log(`cockpit: restart after a reload failed (${String(err)})`))
+  })
+}
+
 export const register: Register = (on, options) => {
     glyphSetting = typeof options?.glyphs === 'string' ? options.glyphs : 'auto'
     planSetting = typeof options?.plan === 'string' ? options.plan : 'auto'
@@ -3662,13 +3710,9 @@ export const register: Register = (on, options) => {
     sizeDefault = options?.column === 'size'
 
   on('session.start', async ($, e, next) => {
+    moduleStarted = true // before next: a slow start must not let the reload check start a second time
     const r = await next(e)
-    await startCockpit($, e)
-    await startFiletree($)
-    await startSavvy($, options?.language)
-    await startGoalMeter($)
-    await cacheStart($)
-    await startShip($)
+    await startAll($, e, options?.language)
     return r
   })
 
@@ -3679,9 +3723,12 @@ export const register: Register = (on, options) => {
     return r
   })
 
-  on('tool.call', { tool: 'Bash' }, ($, e, next) => guardBash($, e, next)).catch(($, e, next) =>
-    next.called ? next(e) : { deny: 'Cockpit hit an error while holding this command, so it did not run. Do not retry it unless the user asks you to.' },
-  )
+  // The Caution guard is off: no Bash call is held. Set CAUTION_ON to true to bring it back.
+  if (CAUTION_ON) {
+    on('tool.call', { tool: 'Bash' }, ($, e, next) => guardBash($, e, next)).catch(($, e, next) =>
+      next.called ? next(e) : { deny: 'Cockpit hit an error while holding this command, so it did not run. Do not retry it unless the user asks you to.' },
+    )
+  }
 
   // The files Claude changes, for the Files header.
 
@@ -3797,16 +3844,21 @@ export const register: Register = (on, options) => {
   })
 
   on('turn.start', async ($, e, next) => {
+    revive($, options?.language)
     if (!e.agentId) {
       replayState.turnFrom = replayState.replay.length
       C.turnOpen = true
       C.turnRun = 0
       live.startedAt = await $.clock.now()
+      lastTurnAt = live.startedAt
       live.steps = 0
       live.tools = 0
       live.now = ''
       live.profile = profileOf(String(e.text ?? ''))
       Object.assign(turnPlan, { total: 0, done: 0, note: '' })
+      // A finished task list or crew run belongs to the work before: a new message starts Progress afresh.
+      if (autoTasks.length > 0 && autoTasks.every(t => t.status === 'completed')) clearTasks()
+      await update($, flow, prev => (prev?.isFinished ? null : prev))
     }
     await goalTurnStart($, e)
     nextTurnStart($)
@@ -4121,9 +4173,13 @@ export const register: Register = (on, options) => {
   // The band above the prompt stays with other mods: crew and goal progress live on the
   // board only. The replay takes the band over while it steps inline.
   // The band above the prompt: next steps and the cost of the message being typed, in one box
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => drawBand($, e, next) as never)
+  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
+    revive($, options?.language)
+    return drawBand($, e, next) as never
+  })
 
   on('prompt.edit', async ($, e, next) => {
+    revive($, options?.language)
     const r = await next(e)
     if (!est.sawEdit) void estimateNote($, 'prompt.edit fires')
     est.sawEdit = true
@@ -4620,6 +4676,9 @@ function compareView(nowMs: number): { before: { label: string; sub: string; dat
 // adapted so the report and its Proceed / Cancel buttons draw inside the Cockpit.
 // The classification, the measuring and the hold are unchanged. It lives in
 // this file because the engine follows `$` only within one module.
+
+// Off since 3.16.1: the hold got in the way more than it helped. The code stays for a switch back.
+const CAUTION_ON = false;
 
 const POLL_SECONDS = "0.25";
 const HOLD_LIMIT_MS = 10 * 60 * 1000;
@@ -5578,9 +5637,9 @@ function nextTurnComplete($: EngineInterface, e: any): void {
 }
 
 /**
- * The band above the prompt, one box: what is beneath it (a survey, another mod's row), then the
- * crew row (always), the next steps after a turn, then, while something is typed, what that message
- * will cost. The replay takes the band over when the board has no room for it.
+ * The band above the prompt, one box: what is beneath it (a survey, another mod's row), then two
+ * columns, the next steps ideas after a turn and the crew row (always), then, while something is
+ * typed, what that message will cost. The replay takes the band over when the board has no room for it.
  */
 async function drawBand($: EngineInterface, e: any, next: any): Promise<unknown> {
   if (replayState.isOpen && replayState.inBand) return replayView($, e, true)
@@ -5594,70 +5653,88 @@ async function drawBand($: EngineInterface, e: any, next: any): Promise<unknown>
   const dot = <Text dimColor>{'  ·  '}</Text>
   const usdColor = view ? BAND_LEVEL_COLOR[view.level] : undefined
   const lit = routeOf(est.draft, view?.level ?? null, C.ctx)
-  const codexState = crew.codexInstalled === false ? 'not installed' : crew.codex
-  const routeButton = (route: Route) => (
-    <Box key={`route:${route}`} marginRight={1}>
-      <Button label={ROUTE_BUTTON[route]} {...(lit?.route === route ? { variant: 'primary' as const } : {})} onPress={() => void crewPress($, route)} />
-    </Box>
-  )
+  // The routes are one choice: a radio list, the lit one marked, its lane in the colors it costs.
+  const routeRow = (route: Route) =>
+    lit?.route === route ? (
+      <Box key={`route:${route}`} flexDirection="column">
+        <Box flexDirection="row">
+          <Text color={BAND_ACCENT}>◉ </Text>
+          <Text color={BAND_ACCENT} bold>(Suggested) </Text>
+          <Button label={ROUTE_BUTTON[route]} variant="primary" onPress={() => void crewPress($, route)} />
+        </Box>
+        <Box flexDirection="row" flexWrap="wrap" marginLeft={2}>
+          {lit.model ? <Text color={BAND_MODEL_COLOR}>{lit.model}</Text> : null}
+          {lit.model ? <Text dimColor>{' · '}</Text> : null}
+          {lit.model ? <Text color={BAND_EFFORT_COLOR[lit.lane.effort]}>{`${lit.lane.effort} effort`}</Text> : null}
+          {lit.specialist ? <Text dimColor>{lit.model ? ` · ${lit.specialist}` : lit.specialist}</Text> : null}
+          <Text dimColor>{`${lit.model || lit.specialist ? ' · ' : ''}${lit.why}`}</Text>
+        </Box>
+      </Box>
+    ) : (
+      <Box key={`route:${route}`} flexDirection="row">
+        <Text dimColor>○ </Text>
+        <Button plain dimColor label={ROUTE_BUTTON[route]} onPress={() => void crewPress($, route)} />
+      </Box>
+    )
+  const codexOnNow = crew.codexInstalled !== false && crew.codex === 'on'
+  const ideas =
+    steps.kind === 'loading' ? (
+      <Text dimColor>finding ideas…</Text>
+    ) : steps.kind === 'offer' ? (
+      [
+        ...steps.items.map((item, index) => (
+          <Box key={`next:${index}`}>
+            <Button
+              hotkey={String(index + 1)}
+              plain
+              label={item.label}
+              onPress={() => {
+                nextShow($, { kind: 'hidden' })
+                void $.prompt.fill({ text: item.prompt }).then(
+                  r => r.isFilled || $.ui.toast('could not fill the prompt box'),
+                  error => $.ui.toast(`could not fill: ${String(error)}`),
+                )
+              }}
+            />
+          </Box>
+        )),
+        <Box key="next:dismiss">
+          <Button hotkey="0" plain dimColor label="Hide" onPress={() => nextShow($, { kind: 'hidden' })} />
+        </Box>,
+      ]
+    ) : null
   return (
     <Box flexDirection="column">
       {below ?? null}
       <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor={BAND_ACCENT} borderDimColor paddingX={1}>
-        <Text color={BAND_ACCENT} bold>◆ Agent routing suggestion</Text>
-        {lit ? (
-          <Box key="suggested" flexDirection="column">
-            <Box flexDirection="row">
-              <Text>Suggested: </Text>
-              {routeButton(lit.route)}
-              {lit.detail ? <Text dimColor>{lit.detail}</Text> : null}
+        {/* Two columns side by side, the ideas first; a narrow band stacks them, and no ideas leaves the routes alone. */}
+        <Box flexDirection="row" flexWrap="wrap" columnGap={4}>
+          {ideas ? (
+            <Box key="ideas" flexDirection="column" flexGrow={1} flexShrink={0} minWidth={34}>
+              <Text color={BAND_IDEAS_COLOR} bold>◆ Next Steps Ideas</Text>
+              {ideas}
             </Box>
-            <Text dimColor>{`  Why: ${lit.why}`}</Text>
-            <Text dimColor>Or run it another way:</Text>
-          </Box>
-        ) : (
-          <Text dimColor>Type your message to get a suggestion, or pick how to run it:</Text>
-        )}
-        <Box key="routes" flexDirection="row" flexWrap="wrap">
-          {ROUTES.filter(route => route !== lit?.route).map(routeButton)}
-        </Box>
-        <Box key="codex" flexDirection="row">
-          <Text dimColor>Codex second opinion: </Text>
-          <Text>{codexState}</Text>
-          <Box marginLeft={2}>
-            <Button
-              key="codex"
-              label={crew.codexInstalled === false ? 'Why not?' : crew.codex === 'on' ? 'Turn off' : 'Turn on'}
-              {...(crew.codexInstalled ? {} : { dimColor: true })}
-              onPress={() => void codexToggle($)}
-            />
-          </Box>
-        </Box>
-        {steps.kind === 'loading' ? <Box marginTop={1}><Text dimColor>◆ finding what you could do next…</Text></Box> : null}
-        {steps.kind === 'offer' ? <Box marginTop={1}><Text color={BAND_ACCENT} bold>◆ What you could do next</Text></Box> : null}
-        {steps.kind === 'offer'
-          ? steps.items.map((item, index) => (
-              <Box key={`next:${index}`} marginLeft={2}>
+          ) : null}
+          <Box key="run" flexDirection="column" flexGrow={1} flexShrink={0} minWidth={34}>
+            <Box flexDirection="row" flexWrap="wrap" justifyContent="space-between" columnGap={2}>
+              <Text color={BAND_ACCENT} bold>◆ Run It</Text>
+              <Box key="codex" flexDirection="row">
+                <Text dimColor>Codex 2nd opinion </Text>
+                {crew.codexInstalled === false ? <Text dimColor>not installed </Text> : <Text color={codexOnNow ? 'green' : 'gray'}>{codexOnNow ? '● on ' : '○ off '}</Text>}
                 <Button
-                  hotkey={String(index + 1)}
+                  key="codex"
                   plain
-                  label={item.label}
-                  onPress={() => {
-                    nextShow($, { kind: 'hidden' })
-                    void $.prompt.fill({ text: item.prompt }).then(
-                      r => r.isFilled || $.ui.toast('could not fill the prompt box'),
-                      error => $.ui.toast(`could not fill: ${String(error)}`),
-                    )
-                  }}
+                  dimColor
+                  label={crew.codexInstalled === false ? 'Why not?' : codexOnNow ? 'Turn off' : 'Turn on'}
+                  onPress={() => void codexToggle($)}
                 />
               </Box>
-            ))
-          : null}
-        {steps.kind === 'offer' ? (
-          <Box key="next:dismiss" marginLeft={2}>
-            <Button hotkey="0" plain dimColor label="Hide these" onPress={() => nextShow($, { kind: 'hidden' })} />
+            </Box>
+            {lit ? null : <Text dimColor>Type your message to get a suggestion</Text>}
+            {lit ? routeRow(lit.route) : null}
+            {ROUTES.filter(route => route !== lit?.route).map(routeRow)}
           </Box>
-        ) : null}
+        </Box>
         {view ? (
           <Box key="estimate" flexDirection="column" marginTop={1}>
             <Box flexDirection="row">
@@ -5667,7 +5744,7 @@ async function drawBand($: EngineInterface, e: any, next: any): Promise<unknown>
                 <Text bold color={usdColor}>≈ {view.usd}</Text>
                 <Text dimColor> if API</Text>
                 {dot}
-                <Text color="cyan">{view.model}</Text>
+                <Text color={BAND_MODEL_COLOR}>{view.model}</Text>
                 {dot}
               </Box>
               <Box flexShrink={1}>
@@ -5758,6 +5835,10 @@ const usdRange = (a: number, b: number): string => (cacheUsd(a) === cacheUsd(b) 
 // The band's look: its border and headings in the Progress violet, the price coloured by how much it is.
 const BAND_ACCENT = '#8f8cf4'
 const BAND_LEVEL_COLOR: Record<Level, string> = { fine: 'green', watch: 'yellow', act: 'red', none: 'gray' }
+// The band's color code: blue for what you could do, the accent for the route, cyan for a model, green to red for what it costs.
+const BAND_IDEAS_COLOR = '#5b9cf5'
+const BAND_MODEL_COLOR = 'cyan'
+const BAND_EFFORT_COLOR: Record<Lane['effort'], string> = { low: 'green', medium: 'yellow', high: 'red' }
 // Above these the price turns amber, then red with the "plan it first" offer.
 const WATCH_USD = 0.5
 const PRICEY_USD = 2
@@ -5875,7 +5956,7 @@ function chatFamily(): Family | null {
   return (Object.keys(FAMILY_RANK) as Family[]).find(f => m.includes(f)) ?? null
 }
 
-type Routed = { route: Route; kind: Kind; lane: Lane; why: string; line: string; detail: string }
+type Routed = { route: Route; kind: Kind; lane: Lane; why: string; line: string; model: string; specialist: string }
 
 /** Where the draft should run, on what, and why: its kind, the lane that kind deserves, then the place; null when nothing is typed. */
 function routeOf(text: string, level: Level | null, ctx: number): Routed | null {
@@ -5889,9 +5970,8 @@ function routeOf(text: string, level: Level | null, ctx: number): Routed | null 
     const on = lane.model === 'codex' || why === 'a short reply' ? '' : `${FAMILY_NAME[lane.model]} ${lane.effort}`
     const specialist = lane.specialist && (on || lane.model === 'codex') ? lane.specialist : ''
     const line = `→ ${ROUTE_LABEL[route]}${on ? ` · ${on}` : ''}${specialist ? ` · ${specialist}` : ''} (${why})`
-    // The band spells the same lane out: "Opus · high effort · the design skill".
-    const detail = [on ? `${FAMILY_NAME[lane.model as Family]} · ${lane.effort} effort` : '', specialist].filter(Boolean).join(' · ')
-    return { route, kind, lane, why, line, detail }
+    // The band spells the same lane out, part by part: "Opus · high effort · the design skill".
+    return { route, kind, lane, why, line, model: on ? FAMILY_NAME[lane.model as Family] : '', specialist }
   }
   if (t.startsWith(CREW_PREFIX.trim())) return done('crew', 'a crew run')
   if (t.startsWith(PLAN_FIRST.trim())) return done('plan', 'a plan first')

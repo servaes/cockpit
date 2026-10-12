@@ -3,7 +3,7 @@
 A personal Claude Code mod: one side panel, titled "Cockpit Board", and one plugin.
 Everything the board shows ships inside it: the file tree, the crew skill with
 its worker agents and progress band, the goal meter, Replay Theater, the Caution
-guard (inside Needs you), Ship and cache-tax. No other mod is needed.
+guard (off since 3.16.1), Ship and cache-tax. No other mod is needed.
 
 ## Install
 
@@ -101,14 +101,8 @@ in, each part separated by a thin line. Each section carries an icon and a colou
    `/cockpit:crew` in one line and wait for your choice; it never starts it on its own.
 5. **Agents** — this chat's helper agents (running, done, cost, tokens, time, then
    up to six rows). `/agents-info` brings up the board; there is no separate agents panel.
-6. **Needs you** — everything that waits on you, in one place, whatever the kind. A shell
-   command that could wipe files or history (a recursive or forced delete, a hard git reset,
-   git clean, a force push, a migration) is measured with read-only helpers (find, du, git) and
-   held here with Proceed / Cancel until you answer, for up to ten minutes, exactly as the
-   Caution guard always did. A small `rm` where losing it costs nothing runs without a hold
-   and is listed as let through: nothing to delete, or at most 50 files and 10 MB inside the
-   project or a temp folder. In bypass permissions mode the bar is 1,000 files and 500 MB,
-   anywhere. A top folder (`/`, the home folder or one just under it) is always held. A hand-off Claude files with `mcp__cockpit__handoff` (an API key to
+6. **Needs you** — everything that waits on you, in one place, whatever the kind. The Caution guard that held risky shell commands here
+   is off since 3.16.1 (`CAUTION_ON` in `hooks/register.tsx` brings it back). A hand-off Claude files with `mcp__cockpit__handoff` (an API key to
    paste, a store form, a DNS record, a login, a payment) shows as a row with the value to paste
    under it and two buttons: **Open <site> ↗** (opens the page and puts the value on your
    clipboard) and **Done ✓** (tells Claude, and resumes a held Ship). The wrong-folder nudge is a
@@ -140,7 +134,7 @@ Then the tree: its header buttons say what they do (↑ up, ⌂ home, ↻ refres
 ⊟ fold, ⊘ unselect, × clear), and below them git status, lines changed, shimmer on the files
 Claude reads and writes, search, sizes, double-click to open.
 
-Only the guard runs anything, and only the command you approve. The cache block makes
+The board runs no commands of its own. The cache block makes
 model calls: one fork per keepwarm ping and one per handoff note, nothing else. The
 board adds three short sections to the system prompt (`cockpit:progress`, the task-list
 request; `cockpit:ship`, how to report a ship, file a hand-off and report a look;
@@ -152,10 +146,7 @@ With the crew row's Codex switch on, a decision or a hard-to-undo step asks Clau
 read-only second opinion from Codex (`codex exec --sandbox read-only --ephemeral`, on a temp
 folder holding only the material it needs), and an image is made through Codex; Codex is
 found on PATH or inside the ChatGPT app. The Ship buttons, Done, Move chat and Fix the rest send a short message as you;
-nothing else is sent on its own. Note that the
-guard reads every line of a Bash call, the commands inside `$( )` and backquotes too; the
-body of a literal here-document (`<<'EOF'`) is the command's input and is skipped, while
-an expanding one (`<<EOF`) is read, since a `$( )` in it runs.
+nothing else is sent on its own.
 
 ## What else is inside
 
@@ -177,15 +168,17 @@ an expanding one (`<<EOF`) is read, since a `$( )` in it runs.
   is drawn whole, up to 400 rows); the terminal keeps moving the tree row by row under the cards.
 - **Everything in one pane:** agents, goals and Replay draw inside the Cockpit Board; nothing opens a pane of its own.
 - **Next steps** (from Thariq Shihipar's next-steps, MIT): after a turn, up to three likely next
-  prompts above the input, under "What you could do next" (press 1, 2 or 3 to put one in the
+  prompts above the input, under "Next Steps Ideas" in the band's left column (press 1, 2 or 3 to put one in the
   prompt box as a draft, 0 to hide them; the first is also the Tab ghost text). Settings: `minAnswerChars`, `suggestSkills`.
   The separate `next-steps@claude-community` plugin is disabled on purpose (it would draw twice).
-- **The crew row, always above the prompt** (`◆ Agent routing suggestion`, typed or not): five
-  buttons named for what they do (Do it here, Hand to a cheaper agent, Open in a new chat, Split
-  across agents, Plan first, then build), plus "Codex second opinion" with Turn on and Turn off.
-  While you type, the route the draft calls for moves up to "Suggested:", lit, with the lane
-  spelled out (`Opus · high effort · the design skill`) and a "Why:" line; the others sit under
-  "Or run it another way". The route note a sent message carries keeps the short names (Here,
+- **The crew row, always above the prompt** (`◆ Run It`, typed or not, the band's right column
+  beside the next steps ideas, alone when there are none or the band is narrow): the five routes
+  as one radio list named for what they do (Do it here, Hand to a cheaper agent, Open in a new
+  chat, Split across agents, Plan first, then build), plus "Codex 2nd opinion" (● on, ○ off) with
+  Turn on and Turn off in its header. While you type, the route the draft calls for moves to the
+  top as `◉ (Suggested) Do it here`, lit, with the lane spelled out under it (`Opus · high effort
+  · the design skill · why`). The colors code the meaning: blue for the ideas, the accent for the
+  route, cyan for a model, green, yellow and red for effort and price. The route note a sent message carries keeps the short names (Here,
   Helper, New chat, Crew, Plan) and the arrow form below. The kind of work (hard-to-undo, architecture, image, video,
   chart, document, UI design, research, mechanical, build, fix, quick) sets the model and effort
   it deserves and the specialist to use, then the place (`→ Plan · Opus high · Codex 2nd
@@ -228,6 +221,10 @@ Each part came from a published mod; see `THIRD_PARTY_LICENSES.md`.
   `my-mods` (`~/.claude/my-mods/`). Claude Code loads a copy taken at install, so
   after an edit bump the version in `plugin.json` and `marketplace.json`, then run
   `claude plugin marketplace update my-mods` and `claude plugin update cockpit@my-mods`.
+- A plugin update or install anywhere rewrites `installed_plugins.json`, and the app
+  reloads every plugin in every open chat. That reload sends no `session.start`, so the
+  module starts itself on the first band draw, turn or keystroke, 3 s later (a new chat's
+  own `session.start` wins in that window), and the board comes back on its own.
 - One hooks module: the engine loads one per plugin and follows `$` only into
   functions declared at the top of that module, so every hook and helper that takes
   `$` is in `hooks/register.tsx`, each event hooked once. Pure helpers sit beside it.

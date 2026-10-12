@@ -34,14 +34,20 @@ const RUNS = [
 
 // What the band's buttons say for each route, by the short name the route notes use.
 const BUTTON: Record<string, string> = { Here: 'Do it here', Helper: 'Hand to a cheaper agent', 'New chat': 'Open in a new chat', Crew: 'Split across agents', Plan: 'Plan first, then build' }
-/** The band shows a route note's line ("→ Helper · Haiku low (why") as its lit button, the lane spelled out, and the why. */
+/** The band shows a route note's line ("→ Helper · Haiku low (why") as its lit, suggested button, the lane part by part, and the why. */
 function expectRoute(text: string, line: string): void {
   const m = /^→ (Here|Helper|New chat|Crew|Plan)(?: ·(?: (.*?))?)?(?: \((.*))?$/s.exec(line)
   if (!m) throw new Error(`not a route line: ${line}`)
   const [, name, detail, why] = m
+  expect(text).toContain('(Suggested) ')
   expect(text).toContain(`"label":"${BUTTON[name]}","variant":"primary"`)
-  if (detail) expect(text).toContain(detail.replace(/^(Haiku|Sonnet|Opus|Fable) (low|medium|high)/, '$1 · $2 effort'))
-  if (why) expect(text).toContain(`Why: ${why.replace(/\)$/, '')}`)
+  const lane = detail ? /^(Haiku|Sonnet|Opus|Fable) (low|medium|high)(?: · (.*))?$/.exec(detail) : null
+  if (lane) {
+    expect(text).toContain(`"${lane[1]}"`)
+    expect(text).toContain(`"${lane[2]} effort"`)
+    if (lane[3]) expect(text).toContain(lane[3])
+  }
+  if (why) expect(text).toContain(why.replace(/\)$/, ''))
 }
 
 type Dirs = Record<string, [string, 'file' | 'dir'][]>
@@ -262,6 +268,29 @@ test('the pane opens as the Cockpit Board at session start', async ($, on) => {
   expect(opens.some(o => o.id === 'cockpit' && o.title === 'Cockpit Board')).toBe(true)
 })
 
+test('after a plugin reload mid-chat, with no session.start, the board comes back on its own', async ($, on) => {
+  const opens: { id?: string; title?: string }[] = []
+  const clock = world(on, { opens })
+  await $.turn.start({ text: 'keep going', turnId: 't-reload' } as never)
+  await clock.settle()
+  expect(opens.some(o => o.id === 'cockpit')).toBe(false)
+  await clock.advance(3000)
+  await clock.settle()
+  expect(opens.some(o => o.id === 'cockpit' && o.title === 'Cockpit Board')).toBe(true)
+})
+
+test('a new chat starts once, from session.start, not again from the reload check', async ($, on) => {
+  const opens: { id?: string; title?: string }[] = []
+  const clock = world(on, { opens })
+  await $.turn.start({ text: 'hi', turnId: 't-first' } as never)
+  await $.session.start(start)
+  await clock.settle()
+  const after = opens.length
+  await clock.advance(3000)
+  await clock.settle()
+  expect(opens.length).toBe(after)
+})
+
 test('a crew run takes the Progress row over the goal', async ($, on) => {
   const clock = world(on, { agents: RUNS, flow: {
     title: 'Build the signup page', total: 4, done: 3, running: 1, phase: 'delegate', isFinished: false,
@@ -307,6 +336,29 @@ test("fills Progress from Claude's own todo list, no command needed", async ($, 
   expect(text).toContain('33%')
   expect(text).toContain('● Writing the tests')
   expect(text).toContain('2. Write the tests')
+})
+
+test('a finished task list stays at 100% until the next message, then Progress starts afresh', async ($, on) => {
+  const clock = world(on)
+  const todos = [
+    { content: 'Read the config', status: 'completed', activeForm: 'Reading the config' },
+    { content: 'Run the suite', status: 'completed', activeForm: 'Running the suite' },
+  ]
+  on('tool.call', { tool: 'TodoWrite' }, async () => ({ result: { oldTodos: [], newTodos: todos } }) as never)
+  await $.session.start(start)
+  await clock.settle()
+  await $.tool.call({ tool: 'TodoWrite', todos } as never)
+  const ui = await mount($, 'desktop')
+  await clock.settle()
+  let text = JSON.stringify(await ui.drawn())
+  expect(text).toContain('✓ all tasks done')
+  expect(text).toContain('100%')
+
+  await $.turn.start({ text: 'now something else', turnId: 't-next' } as never)
+  await clock.settle()
+  text = JSON.stringify(await ui.drawn())
+  expect(text).not.toContain('all tasks done')
+  expect(text).not.toContain('1. Read the config')
 })
 
 test("fills Progress from Claude's task tracker, one task at a time", async ($, on) => {
@@ -373,144 +425,17 @@ test('counts the files Claude changes for the Files header', async ($, on) => {
   expect(text).not.toContain('"label":"▶ See code changes","variant":"primary"')
 })
 
-test('holds a risky command inside the Cockpit until Cancel is pressed, then lists it', async ($, on) => {
-  let release: () => void = () => undefined
-  const gate = new Promise<void>(r => { release = r })
-  const clock = world(on, { gate: () => gate })
+test('the Caution guard is off: a risky command runs at once and nothing is held', async ($, on) => {
+  const clock = world(on)
   let ran = 0
   on('tool.call', { tool: 'Bash' }, async () => { ran += 1; return { result: { stdout: 'ran', stderr: '', exitCode: 0 } } as never })
   await $.session.start(start)
   await clock.settle()
-
-  const call = $.tool.call({ tool: 'Bash', command: 'rm -rf ~/Documents/build' } as never)
-  await clock.settle()
-  const ui = await mount($, 'desktop')
-  let text = JSON.stringify(await ui.drawn())
-  expect(text).toContain('Held: rm -rf')
-  expect(text).toContain('delete 2 files (about 2.0 KB)')
-  expect(text).toContain('build/a.js')
-  expect(text).toContain('act now')
-  expect(text).toContain('Proceed or Cancel below')
-
-  await ui.press({ key: 'blast:cancel' })
-  release()
-  const r = await call
-  expect(String((r as { deny?: string }).deny)).toContain('the user pressed Cancel')
-  expect(ran).toBe(0)
-
-  text = JSON.stringify(await ui.drawn())
-  expect(text).not.toContain('Held: rm -rf')
-  expect(text).toContain('nothing waiting · 1 solved this chat')
-})
-
-test("a here-document's body is the command's input, not commands: rm -rf inside one is not held", async ($, on) => {
-  // each held call waits on its own gate, opened once Cancel is pressed, as in the hold test above
-  let release: () => void = () => undefined
-  let gate: Promise<void> = Promise.resolve()
-  const hold = () => { gate = new Promise<void>(r => { release = r }) }
-  const clock = world(on, { gate: () => gate })
-  let ran = 0
-  on('tool.call', { tool: 'Bash' }, async () => { ran += 1; return { result: { stdout: 'ran', stderr: '', exitCode: 0 } } as never })
-  await $.session.start(start)
-  await clock.settle()
-  const script = "python3 -I - hooks/x.ts <<'EOF'\nRISKY = r'\\b(rebase|deploy)\\b|rm -rf'\nprint('ok')\nEOF\necho done"
-  const r = await $.tool.call({ tool: 'Bash', command: script } as never)
+  const r = await $.tool.call({ tool: 'Bash', command: 'rm -rf ~/Documents/build' } as never)
   expect((r as { deny?: string }).deny).toBeUndefined()
   expect(ran).toBe(1)
   const ui = await mount($, 'desktop')
   expect(JSON.stringify(await ui.drawn())).not.toContain('Held:')
-  // what Codex's second opinion found: each of these still hides a real rm -rf, so each is held
-  for (const command of [
-    'cat <<EOF\n$(rm -rf ~/Documents/build)\nEOF',
-    "echo '<<EOF'\nrm -rf ~/Documents/build",
-    'cat <<A <<B\nfirst\nA\nrm -rf ~/Documents/build\nB',
-    'cat <<<EOF\nrm -rf ~/Documents/build',
-    'echo $(rm -rf ~/Documents/build)',
-    'echo `rm -rf ~/Documents/build`',
-  ]) {
-    hold()
-    const call = $.tool.call({ tool: 'Bash', command } as never)
-    await clock.settle()
-    expect(JSON.stringify(await ui.drawn()), command).toContain('Held: rm -rf')
-    await ui.press({ key: 'blast:cancel' })
-    release()
-    await call
-  }
-  // a literal body with a second literal here-document after it: both bodies are input
-  const two = await $.tool.call({ tool: 'Bash', command: "cat <<'A' <<'B'\nrm -rf x\nA\nrm -rf y\nB\necho ok" } as never)
-  expect((two as { deny?: string }).deny).toBeUndefined()
-  // the same words outside a here-document are still a risk
-  hold()
-  const held = $.tool.call({ tool: 'Bash', command: 'rm -rf ~/Documents/build' } as never)
-  await clock.settle()
-  expect(JSON.stringify(await ui.drawn())).toContain('Held: rm -rf')
-  await ui.press({ key: 'blast:cancel' })
-  release()
-  await held
-})
-
-test('a small rm where losing it costs nothing runs without a hold; bypass mode raises the bar; a top folder is always held', async ($, on) => {
-  // a held call waits on its gate, opened after each try, as in the hold test above
-  let release: () => void = () => undefined
-  let gate: Promise<void> = Promise.resolve()
-  const w = { rmReport: '2 2048 1\n./build/a.js\n./build/b.js\n', gate: () => gate }
-  const clock = world(on, w)
-  let ran = 0
-  on('tool.call', { tool: 'Bash' }, async () => { ran += 1; return { result: { stdout: 'ran', stderr: '', exitCode: 0 } } as never })
-  // the engine's answer to the classic prompt hook: nothing to add
-  on('classic.UserPromptSubmit', async () => ({}) as never)
-  await $.session.start(start)
-  await clock.settle()
-  const ui = await mount($, 'desktop')
-  const runs = async (command: string) => {
-    const before = ran
-    gate = new Promise<void>(r => { release = r })
-    const call = $.tool.call({ tool: 'Bash', command } as never)
-    await clock.settle()
-    const heldNow = JSON.stringify(await ui.drawn()).includes('Held: rm')
-    if (heldNow) await ui.press({ key: 'blast:cancel' })
-    release()
-    await call
-    return !heldNow && ran === before + 1
-  }
-  // inside the project, two small files: runs; nothing to delete: runs
-  expect(await runs('rm -rf build')).toBe(true)
-  w.rmReport = '0 0 0\n'
-  expect(await runs('rm -rf ~/Documents/old')).toBe(true)
-  w.rmReport = '1 0 1\n'
-  expect(await runs('rm -rf /tmp/x')).toBe(true)
-  // outside the project, small: held in the default mode
-  w.rmReport = '3 4096 1\n./a\n./b\n./c\n'
-  expect(await runs('rm -rf ~/Documents/build')).toBe(false)
-  // inside the project but big: held
-  w.rmReport = '400 4096 1\n'
-  expect(await runs('rm -rf build')).toBe(false)
-  // what Codex's review of the gentler guard found: each still deletes outside the project, so each is held
-  w.rmReport = '0 0 0\n'
-  expect(await runs('rm -f /tmp/nothing; rm -rf ~/Documents/build')).toBe(false)
-  w.rmReport = '2 2048 1\n./build/a.js\n./build/b.js\n'
-  expect(await runs("bash <<'EOF'\nrm -rf ~/Documents/build\nEOF")).toBe(false)
-  expect(await runs('command -- rm -rf ~/Documents/build')).toBe(false)
-  expect(await runs("r''m -rf ~/Documents/build")).toBe(false)
-  expect(await runs('false && cd /tmp; rm -rf build')).toBe(false)
-  // in bypass mode the same two run, a huge one is still held, and so is a top folder
-  await $.classic.UserPromptSubmit({ prompt: 'x', permission_mode: 'bypassPermissions' } as never)
-  w.rmReport = '3 4096 1\n./a\n./b\n./c\n'
-  expect(await runs('rm -rf ~/Documents/build')).toBe(true)
-  w.rmReport = '400 4096 1\n'
-  expect(await runs('rm -rf build')).toBe(true)
-  w.rmReport = '50000 9000000000 1\n'
-  expect(await runs('rm -rf build')).toBe(false)
-  w.rmReport = '3 4096 1\n'
-  expect(await runs('rm -rf ~/Documents')).toBe(false)
-  expect(await runs('rm -rf ~')).toBe(false)
-  // a target the shell expands was measured as written ("nothing to delete"): held in any mode
-  w.rmReport = '0 0 0\n'
-  expect(await runs('rm -rf $HOME')).toBe(false)
-  expect(await runs('rm -rf "$D"')).toBe(false)
-  expect(await runs('rm -rf ~root')).toBe(false)
-  // the ones let through are not counted as solved on the board
-  expect(JSON.stringify(await ui.drawn())).not.toContain('9 solved')
 })
 
 test('/cockpit <path> pins another folder in the same pane', async ($, on) => {
@@ -1075,12 +1000,12 @@ test('the crew row stays above the prompt, typed or not: the draft lights the ro
   await clock.settle()
   // nothing typed: the row is there, no route lit, no estimate; Codex is not installed in this world
   let text = JSON.stringify(await ui.drawn())
-  expect(text).toContain('◆ Agent routing suggestion')
+  expect(text).toContain('◆ Run It')
   expect(text).toContain('Type your message to get a suggestion')
   for (const label of Object.values(BUTTON)) expect(text).toContain(`"label":"${label}"`)
   expect(text).not.toContain('"variant":"primary"')
   expect(text).not.toContain('This message')
-  expect(text).toContain('"not installed"')
+  expect(text).toContain('"not installed "')
   expect(text).toContain('"label":"Why not?"')
   // mechanical work lights Helper; parallel work lights Crew
   draft.text = 'roda os testes e lista os que falham'
@@ -1228,9 +1153,9 @@ test('next steps and the estimate share one box above the prompt: the suggestion
   draft.text = 'corrige o bug do login'
   await clock.advance(2000)
   const text = JSON.stringify(await ui.drawn())
-  expect(text).toContain('◆ What you could do next')
+  expect(text).toContain('◆ Next Steps Ideas')
   expect(text).toContain('Run the tests')
-  expect(text).toContain('"label":"Hide these"')
+  expect(text).toContain('"label":"Hide"')
   expect(text).toContain('"This message "')
   // one bordered box, the suggestions first and the estimate last, nearest the prompt
   expect(text.split('"borderStyle":"round"').length).toBe(2)
@@ -1495,7 +1420,8 @@ test('with Codex on, a decision gets a read-only second opinion from Codex and a
   const ui = await band($, 'desktop')
   await clock.settle()
   const drawn = JSON.stringify(await ui.drawn())
-  expect(drawn).toContain('Codex second opinion: ')
+  expect(drawn).toContain('Codex 2nd opinion ')
+  expect(drawn).toContain('● on ')
   expect(drawn).toContain('"label":"Turn off"')
 })
 
