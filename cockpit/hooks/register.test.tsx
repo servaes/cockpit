@@ -279,6 +279,16 @@ test('after a plugin reload mid-chat, with no session.start, the board comes bac
   expect(opens.some(o => o.id === 'cockpit' && o.title === 'Cockpit Board')).toBe(true)
 })
 
+test('a reload in the middle of a turn: the next tool call brings the board back', async ($, on) => {
+  const opens: { id?: string; title?: string }[] = []
+  const clock = world(on, { opens })
+  on('tool.call', { tool: 'Read' }, async () => ({ result: 'file text' }) as never)
+  await $.tool.call({ tool: 'Read', file_path: `${ROOT}/a.ts` } as never)
+  await clock.advance(3000)
+  await clock.settle()
+  expect(opens.some(o => o.id === 'cockpit' && o.title === 'Cockpit Board')).toBe(true)
+})
+
 test('a new chat starts once, from session.start, not again from the reload check', async ($, on) => {
   const opens: { id?: string; title?: string }[] = []
   const clock = world(on, { opens })

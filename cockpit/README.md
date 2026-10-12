@@ -223,7 +223,7 @@ Each part came from a published mod; see `THIRD_PARTY_LICENSES.md`.
   `claude plugin marketplace update my-mods` and `claude plugin update cockpit@my-mods`.
 - A plugin update or install anywhere rewrites `installed_plugins.json`, and the app
   reloads every plugin in every open chat. That reload sends no `session.start`, so the
-  module starts itself on the first band draw, turn or keystroke, 3 s later (a new chat's
+  module starts itself on the first band draw, turn, tool call or keystroke, 3 s later (a new chat's
   own `session.start` wins in that window), and the board comes back on its own.
 - One hooks module: the engine loads one per plugin and follows `$` only into
   functions declared at the top of that module, so every hook and helper that takes

@@ -151,7 +151,7 @@ const taskDoneAt = new Map<string, number>()
 let lastSessionId = ''
 let lastTurnAt = 0
 // Whether this module ran its start. A plugin reload mid-chat loads it fresh with no session.start, so the
-// first sign of life (the band drawing, a turn, typing) starts it, the board included.
+// first sign of life (the band drawing, a turn, a tool call, typing) starts it, the board included.
 let moduleStarted = false
 let reviving = false
 const REVIVE_WAIT_MS = 3000
@@ -3735,6 +3735,7 @@ export const register: Register = (on, options) => {
   // Every other tool call: the goal meter's own tool and its strict mode, the replay's recording,
   // the tree's shimmer and git activity, then the count of files changed this chat.
   on('tool.call', async ($, e, next) => {
+    revive($, options?.language) // a reload mid-turn: the next tool call brings the board back
     if (!e.agentId) noteLiveTool(e, await $.clock.now())
     if (e.tool === 'Bash') void noteCd($, e).catch(() => undefined)
     const early = await goalToolCall($, e)
