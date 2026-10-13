@@ -222,9 +222,13 @@ Each part came from a published mod; see `THIRD_PARTY_LICENSES.md`.
   after an edit bump the version in `plugin.json` and `marketplace.json`, then run
   `claude plugin marketplace update my-mods` and `claude plugin update cockpit@my-mods`.
 - A plugin update or install anywhere rewrites `installed_plugins.json`, and the app
-  reloads every plugin in every open chat. That reload sends no `session.start`, so the
-  module starts itself on the first band draw, turn, tool call or keystroke, 3 s later (a new chat's
-  own `session.start` wins in that window), and the board comes back on its own.
+  reloads every plugin in every open chat. If that ever loads a fresh hooks module, it gets
+  no `session.start`, so the module starts itself on the first band draw, turn, tool call or
+  keystroke, 3 s later (a new chat's own `session.start` wins in that window). So far an open
+  chat keeps the module it started with; a new version shows in new chats.
+- A board or band that throws while drawing shows a red line with the error instead of
+  vanishing, and the error and its stack go to `.last-board-<chat>.log` beside the mod, with
+  each start and each time the board closes. Read that file first when the board disappears.
 - One hooks module: the engine loads one per plugin and follows `$` only into
   functions declared at the top of that module, so every hook and helper that takes
   `$` is in `hooks/register.tsx`, each event hooked once. Pure helpers sit beside it.

@@ -2075,6 +2075,7 @@ async function filetreePromptSubmit($: EngineInterface, e: any, next: any): Prom
 async function drawTree($: EngineInterface, e: any): Promise<unknown> {
     if (e.surface === 'terminal' && e.props.placement === 'inline') {
       noDock = true
+      void boardLog($, 'board closed by the mod: the terminal draws it inline')
       void $.ui.close({ id: PANE }).catch(() => undefined)
       const { Box: Empty } = $.ui.resolve(e)
       return <Empty />
@@ -3666,6 +3667,36 @@ async function replayNow($: EngineInterface): Promise<void> {
 // The hooks: one per event. Where several parts listen, the hook calls them in turn.
 // =============================================================================
 
+// The board's own log, one file per chat beside the mod (.last-board-<chat>.log, git-ignored):
+// a drawing error with its stack, and each time the board closes, so a board that vanished can be traced.
+const boardLogLines: string[] = []
+const BOARD_LOG_MAX = 200
+
+async function boardLog($: EngineInterface, line: string): Promise<void> {
+  try {
+    boardLogLines.push(`${new Date(await $.clock.now()).toISOString()} ${line}`)
+    if (boardLogLines.length > BOARD_LOG_MAX) boardLogLines.splice(0, boardLogLines.length - BOARD_LOG_MAX)
+    const h = home || (await $.env.get('HOME')) || ''
+    if (h) await $.fs.write(`${h}/.claude/my-mods/cockpit/.last-board-${(lastSessionId || 'chat').slice(0, 8)}.log`, boardLogLines.join('\n') + '\n')
+  } catch {
+    // nothing to do without a writable home
+  }
+}
+
+const errText = (err: unknown): string => (err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err))
+
+/** A drawing that threw: logged, and a one-line note in its place, so the board stays up. */
+function drawFailed($: EngineInterface, e: any, where: string, err: unknown): unknown {
+  void boardLog($, `${where} failed to draw: ${errText(err)}`)
+  const { Box, Text } = $.ui.resolve(e)
+  return (
+    <Box flexDirection="column">
+      <Text color="red">{`Cockpit Board hit an error drawing the ${where}: ${err instanceof Error ? err.message : String(err)}`}</Text>
+      <Text dimColor>It is logged in .last-board-*.log beside the mod; the next update tries again.</Text>
+    </Box>
+  )
+}
+
 async function startAll($: EngineInterface, e: any, language: unknown): Promise<void> {
   moduleStarted = true
   // A new chat in the same process (/clear, a fresh session) keeps this module's variables: drop the last chat's tasks.
@@ -3678,6 +3709,7 @@ async function startAll($: EngineInterface, e: any, language: unknown): Promise<
     }
     lastSessionId = id
   }
+  void boardLog($, `start: surface=${String(e?.surface)}`)
   await startCockpit($, e)
   await startFiletree($)
   await startSavvy($, language)
@@ -4165,6 +4197,7 @@ export const register: Register = (on, options) => {
 
   on('ui.close', async ($, e, next) => {
     if (e.id === PANE || e.requestId === PANE) {
+      void boardLog($, `board closed: ${JSON.stringify(e).slice(0, 300)}`)
       replayState.isOpen = false
       $.ui.invalidate('ui.render')
     }
@@ -4174,9 +4207,13 @@ export const register: Register = (on, options) => {
   // The band above the prompt stays with other mods: crew and goal progress live on the
   // board only. The replay takes the band over while it steps inline.
   // The band above the prompt: next steps and the cost of the message being typed, in one box
-  on('ui.render', { component: 'AbovePrompt' }, ($, e, next) => {
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     revive($, options?.language)
-    return drawBand($, e, next) as never
+    try {
+      return (await drawBand($, e, next)) as never
+    } catch (err) {
+      return drawFailed($, e, 'band', err) as never
+    }
   })
 
   on('prompt.edit', async ($, e, next) => {
@@ -4198,8 +4235,12 @@ export const register: Register = (on, options) => {
   // The panes: the Cockpit Board, the agents panel, the goal meter and the replay.
   on('ui.render', { component: 'Pane' }, async ($, e, next) => {
     if (e.requestId === PANE) {
-      if (replayState.isOpen && !replayState.inBand && e.props?.placement !== 'inline') return replayView($, { ...e, bodyColumns: e.props?.bodyColumns }, false)
-      return drawCockpit($, e, next)
+      try {
+        if (replayState.isOpen && !replayState.inBand && e.props?.placement !== 'inline') return await replayView($, { ...e, bodyColumns: e.props?.bodyColumns }, false)
+        return await drawCockpit($, e, next)
+      } catch (err) {
+        return drawFailed($, e, 'board', err)
+      }
     }
     return next(e)
   })

@@ -301,6 +301,20 @@ test('a new chat starts once, from session.start, not again from the reload chec
   expect(opens.length).toBe(after)
 })
 
+test('a board that throws while drawing shows the error and logs it, instead of vanishing', async ($, on) => {
+  const writes: { path: string; text: string }[] = []
+  // agents state in a shape the board does not expect: drawing it throws
+  const clock = world(on, { writes, agents: { broken: true } as never })
+  await $.session.start(start)
+  await clock.settle()
+  const ui = await mount($, 'desktop')
+  await clock.settle()
+  const text = JSON.stringify(await ui.drawn())
+  expect(text).toContain('Cockpit Board hit an error drawing the board')
+  const log = writes.filter(w => /\.last-board-s1\.log$/.test(w.path)).pop()
+  expect(log?.text).toContain('board failed to draw')
+})
+
 test('a crew run takes the Progress row over the goal', async ($, on) => {
   const clock = world(on, { agents: RUNS, flow: {
     title: 'Build the signup page', total: 4, done: 3, running: 1, phase: 'delegate', isFinished: false,
