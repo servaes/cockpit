@@ -369,6 +369,14 @@ async function drawCockpit($: EngineInterface, e: any, next: any): Promise<unkno
         <Box marginLeft={1} flexShrink={1}><Text dimColor wrap="truncate-end">{legend}</Text></Box>
       </Box>
     )
+    // A Needs you or Ship button: on its own row, or beside its pair (Done ✓ · Dismiss ✕) under one legend.
+    const NeedButtonRow = (b: NeedButton) =>
+      b.pair
+        ? ButtonsRow(b.key, [
+            { key: b.key, label: b.label, onPress: () => void pressButton($, b.key), ...(b.primary ? { primary: true } : {}) },
+            { key: b.pair.key, label: b.pair.label, onPress: () => void pressButton($, b.pair!.key) },
+          ], `${b.legend} · ✕ ${b.pair.legend}`)
+        : ButtonRow(b.key, b.label, b.legend, () => void pressButton($, b.key), b.primary)
     // One button per row, its legend to the right.
     const ButtonRow = (k: string, label: string, legend: string, onPress: () => void, primary = false) => (
       <Box key={`${k}:row`} flexDirection="row">
@@ -649,6 +657,14 @@ async function drawCockpit($: EngineInterface, e: any, next: any): Promise<unkno
           </Box>
         )
       }
+      // A Needs you or Ship button: on its own row, or beside its pair (Done ✓ · Dismiss ✕) under one legend.
+      const NeedAction = (b: NeedButton) =>
+        b.pair
+          ? Actions(b.key, [
+              { key: b.key, label: b.label, onPress: () => void pressButton($, b.key), ...(b.primary ? { primary: true } : {}) },
+              { key: b.pair.key, label: b.pair.label, onPress: () => void pressButton($, b.pair!.key) },
+            ], `${b.legend} · ✕ ${b.pair.legend}`)
+          : Action(b.key, b.label, b.legend, () => void pressButton($, b.key), b.primary, NEED_BUTTON_W)
       const usageAlt = shown.map(w => `${labelOf(w.kind)} ${wordOf(w.percentUsed)} ${Math.round(w.percentUsed)}%${w.resetsAt ? ` resets ${resetWords(w, nowMs)}` : ''} ↳ ${usageSoWhat(w, nowMs)}`)
       const goalSpec: CardSpec = myGoals.length === 0 ? { icon: 'goals', label: 'Goals', color: SECTION.Goals.color, state: 'none yet' } : { ...fromRow(goalRows[0], 'goals'), ...(goalRows[0].note ? { phrase: goalRows[0].note } : {}) }
       const ctx = context ? contextLevel(context.percent) : null
@@ -689,7 +705,7 @@ async function drawCockpit($: EngineInterface, e: any, next: any): Promise<unkno
           ...(nv.paste ? { more: nv.paste } : {}), open: waiting || nv.buttons.length > 0 },
           `Needs you ${nv.phrase}${sayRows(needRows)}`),
         holdBox,
-        ...nv.buttons.map(b => Action(b.key, b.label, b.legend, () => void pressButton($, b.key), b.primary, NEED_BUTTON_W)),
+        ...nv.buttons.map(NeedAction),
         // CHANGES: what the chat produced, what went live, the screen before and after
         draw('head:changes', dividerSvg(W, 'CHANGES', changesSummary, true), `CHANGES · ${changesSummary}`),
         card('files', { icon: 'files', label: 'File Changes', color: SECTION.Files.color, state: `${changedFiles.size} changed`, stateColor: changedFiles.size ? SECTION.Files.color : undefined,
@@ -709,7 +725,7 @@ async function drawCockpit($: EngineInterface, e: any, next: any): Promise<unkno
         card('ship', { icon: 'ship', label: 'Ship', color: SECTION.Ship.color, ...(sv.level ? { level: sv.level } : { state: sv.state, stateColor: sv.stateColor }), phrase: sv.phrase,
           value: sv.value, bar: { pct: sv.pct, color: sv.barColor }, ...(sv.aside ? { aside: sv.aside } : {}), rows: sv.rows, open: true },
           `Ship ${sv.state} ${sv.phrase} ${sv.value}${sayRows(sv.rows)}`),
-        ...sv.buttons.map(b => Action(b.key, b.label, b.legend, () => void pressButton($, b.key), b.primary, NEED_BUTTON_W)),
+        ...sv.buttons.map(NeedAction),
       ]
       // The desktop scrolls the whole board natively, cards and tree together (ui.scroll passes the
       // wheel to the engine), so the tree is drawn whole, up to DESKTOP_TREE_ROWS, not windowed.
@@ -776,7 +792,7 @@ async function drawCockpit($: EngineInterface, e: any, next: any): Promise<unkno
       ...needRows.map(Item),
       ...(nv.paste ? [Hint('needs:paste', nv.paste)] : []),
       ...(holdBox ? [holdBox] : []),
-      ...nv.buttons.map(b => ButtonRow(b.key, b.label, b.legend, () => void pressButton($, b.key), b.primary)),
+      ...nv.buttons.map(NeedButtonRow),
     ]
     // CHANGES: the files Claude changed with their line counts, the two See buttons, the compare when open, then Ship.
     const filesRows: unknown[] = [
@@ -805,7 +821,7 @@ async function drawCockpit($: EngineInterface, e: any, next: any): Promise<unkno
       Rule('rule:ship'),
       Row({ k: 'ship:head', label: 'Ship', sub: sv.state, subColor: sv.stateColor, bold: sv.level === 'act', barText: gauge(sv.pct, barW), barColor: sv.barColor, pct: sv.value, note: [sv.phrase, sv.aside].filter(Boolean).join(' · ') }),
       ...sv.rows.map(Item),
-      ...sv.buttons.map(b => ButtonRow(b.key, b.label, b.legend, () => void pressButton($, b.key), b.primary)),
+      ...sv.buttons.map(NeedButtonRow),
     ]
 
     // Tell the tree it has fewer rows, so the pane does not overflow by the sections' height.
@@ -4268,9 +4284,9 @@ type StepState = 'planned' | 'running' | 'done' | 'held' | 'failed'
 type ShipState = 'ready' | 'shipping' | 'held' | 'live' | 'failed'
 type Need = { id: number; kind: 'handoff' | 'folder'; title: string; url?: string; paste?: string; why?: string; step?: number; path?: string; at: number }
 type Ask = { text: string; done: boolean; x?: number; y?: number }
-type NeedButton = { key: string; label: string; legend: string; primary?: boolean }
+type NeedButton = { key: string; label: string; legend: string; primary?: boolean; pair?: { key: string; label: string; legend: string } }
 
-const needs: { items: Need[]; solved: number; nextId: number; folderAsked: boolean; cds: Record<string, number> } = { items: [], solved: 0, nextId: 1, folderAsked: false, cds: {} }
+const needs: { items: Need[]; solved: number; dismissed: number; nextId: number; folderAsked: boolean; cds: Record<string, number> } = { items: [], solved: 0, dismissed: 0, nextId: 1, folderAsked: false, cds: {} }
 const ship: { state: ShipState; steps: { state: StepState; note: string }[]; startedAt: number; endedAt: number; url: string; preview: string; platform: string; message: string; heldStep: number; failedStep: number } = {
   state: 'ready', steps: SHIP_STEPS.map(() => ({ state: 'planned', note: '' })), startedAt: 0, endedAt: 0, url: '', preview: '', platform: '', message: '', heldStep: 0, failedStep: 0,
 }
@@ -4343,7 +4359,7 @@ async function startShip($: EngineInterface): Promise<void> {
   })
   await $.tool.register({
     name: 'handoff',
-    description: "File something only the person can do on the Cockpit Board's Needs you section: an API key to paste, a store form, a DNS record, a login, a payment. Give the exact page to open, the exact value to paste and why. The board shows Open and Done buttons; the chat continues when the person presses Done.",
+    description: "File something only the person can do on the Cockpit Board's Needs you section: an API key to paste, a store form, a DNS record, a login, a payment. Give the exact page to open, the exact value to paste and why. The board shows Open, Do it in Chrome, Done and Dismiss buttons; the chat continues when the person presses Done. With done: true and the same title, clears the item instead (after you did it yourself in Chrome); a held Ship resumes.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -4352,6 +4368,7 @@ async function startShip($: EngineInterface): Promise<void> {
         paste: { type: 'string', description: 'The exact value to paste there, verbatim.' },
         why: { type: 'string', description: 'What is waiting on it, one line.' },
         step: { type: 'integer', minimum: 1, maximum: 6, description: 'The ship step this holds, if any.' },
+        done: { type: 'boolean', description: 'true clears the item with this title from the board (you did it in Chrome, or the person told you it is done); a held Ship resumes.' },
       },
       required: ['title'],
     },
@@ -4457,9 +4474,17 @@ async function shipTool($: EngineInterface, input: { step?: number; state?: stri
   return { result: `ok: Ship ${ship.state} · step ${step} ${input.state}` }
 }
 
-async function handoffTool($: EngineInterface, input: { title?: string; url?: string; paste?: string; why?: string; step?: number }): Promise<{ result: string }> {
+async function handoffTool($: EngineInterface, input: { title?: string; url?: string; paste?: string; why?: string; step?: number; done?: boolean }): Promise<{ result: string }> {
   const title = (input.title ?? '').trim().slice(0, 80)
   if (!title) return { result: 'handoff: title is required' }
+  if (input.done) {
+    const key = title.toLowerCase()
+    const item = needs.items.find(n => n.kind === 'handoff' && n.title.toLowerCase() === key)
+    if (!item) return { result: `handoff: nothing waiting called "${title}"${needs.items.length ? ` (waiting: ${needs.items.map(n => `"${n.title}"`).join(', ')})` : ''}` }
+    solveNeed(item)
+    $.ui.invalidate('ui.render')
+    return { result: `ok: "${title}" cleared from the board${item.step && ship.state === 'shipping' ? `; the Ship runs again from step ${item.step}` : ''}` }
+  }
   const now = await $.clock.now()
   const item: Need = { id: needs.nextId++, kind: 'handoff', title, at: now }
   if (input.url) item.url = String(input.url).trim()
@@ -4559,17 +4584,43 @@ async function pressOpen($: EngineInterface, url: string, copyText?: string): Pr
     $.ui.toast(`Cockpit: could not open ${url}`)
   }
 }
-async function pressDone($: EngineInterface, id: number): Promise<void> {
-  const item = needs.items.find(n => n.id === id)
-  if (!item) return
-  needs.items = needs.items.filter(n => n.id !== id)
+/** Takes a hand-off off the board as solved; a Ship held on its step runs again. */
+function solveNeed(item: Need): void {
+  needs.items = needs.items.filter(n => n.id !== item.id)
   needs.solved += 1
   if (item.step && ship.state === 'held' && ship.heldStep === item.step) {
     ship.state = 'shipping'
     ship.steps[item.step - 1].state = 'running'
   }
+}
+async function pressDone($: EngineInterface, id: number): Promise<void> {
+  const item = needs.items.find(n => n.id === id)
+  if (!item) return
+  solveNeed(item)
   $.ui.invalidate('ui.render')
   await $.prompt.submit({ text: `Done: "${item.title}". Continue${item.step ? ` the ship from step ${item.step}` : ''}.`, asUser: true })
+}
+/** Dismiss: the item goes without a word to Claude; a Ship it held stops where it is. */
+async function pressDismiss($: EngineInterface, id: number): Promise<void> {
+  const item = needs.items.find(n => n.id === id)
+  if (!item) return
+  needs.items = needs.items.filter(n => n.id !== id)
+  needs.dismissed += 1
+  if (item.step && ship.state === 'held' && ship.heldStep === item.step) shipReset()
+  $.ui.invalidate('ui.render')
+}
+/** Do it in Chrome: asks Claude, in the person's words, to do the hand-off itself through Claude in Chrome. */
+async function pressChrome($: EngineInterface, id: number): Promise<void> {
+  const item = needs.items.find(n => n.id === id)
+  if (!item || !item.url) return
+  await $.prompt.submit({
+    text:
+      `Do this hand-off yourself with Claude in Chrome (the mcp__claude-in-chrome tools; load them with ToolSearch first): "${item.title}". ` +
+      `Open ${item.url}${item.paste ? ` and enter this value where it belongs, verbatim: ${item.paste}` : ''}${item.why ? ` (${item.why})` : ''}. ` +
+      `Passwords, card numbers, government IDs and payments stay with me: if the page asks for one, stop there and say what is left for me to do. ` +
+      `When it is done, call ${HANDOFF_TOOL} with { title: "${item.title.replace(/"/g, "'")}", done: true } so the board clears it${item.step ? ` and the Ship resumes at step ${item.step}` : ''}.`,
+    asUser: true,
+  })
 }
 async function pressMove($: EngineInterface, id: number): Promise<void> {
   const item = needs.items.find(n => n.id === id)
@@ -4607,7 +4658,7 @@ async function pressButton($: EngineInterface, key: string): Promise<void> {
   if (key === 'ship:open') return pressOpen($, ship.url, ship.url)
   if (key === 'compare:fix') return pressFixRest($)
   if (key === 'compare:ok') return pressLooksGood($)
-  const m = /^need:(\d+):(open|done|move|later)$/.exec(key)
+  const m = /^need:(\d+):(open|done|move|later|dismiss|chrome)$/.exec(key)
   if (!m) return
   const id = Number(m[1])
   const item = needs.items.find(n => n.id === id)
@@ -4615,6 +4666,8 @@ async function pressButton($: EngineInterface, key: string): Promise<void> {
   if (m[2] === 'done') return pressDone($, id)
   if (m[2] === 'move') return pressMove($, id)
   if (m[2] === 'later') return pressNotNow($, id)
+  if (m[2] === 'dismiss') return pressDismiss($, id)
+  if (m[2] === 'chrome') return pressChrome($, id)
 }
 
 /** Needs you as data: the pill, the phrase, the rows and the buttons, the same on both surfaces. */
@@ -4634,12 +4687,17 @@ function needsView(waiting: boolean, heldNow: any, hist: Held[]): { level: Level
       rows.push({ k: `need:${n.id}`, mark: 'held', color: 'red', text: n.title, strong: true, tail: n.step ? `from Ship · step ${n.step}` : n.why ?? '' })
       if (n.paste) paste = `paste: ${n.paste}`
       if (n.url) buttons.push({ key: `need:${n.id}:open`, label: `Open ${hostOf(n.url)} ↗`, legend: n.paste ? 'opens the page (the value to paste goes to your clipboard too)' : n.why ?? 'opens the page', primary: true })
-      buttons.push({ key: `need:${n.id}:done`, label: 'Done ✓', legend: n.step ? `resumes Ship at step ${n.step}` : 'tells Claude it is done' })
+      if (n.url) buttons.push({ key: `need:${n.id}:chrome`, label: 'Do it in Chrome ⇢', legend: 'asks Claude to do it in your Chrome (Claude in Chrome); logins, cards and payments stay yours' })
+      buttons.push({
+        key: `need:${n.id}:done`, label: 'Done ✓', legend: n.step ? `resumes Ship at step ${n.step}` : 'tells Claude it is done',
+        pair: { key: `need:${n.id}:dismiss`, label: 'Dismiss ✕', legend: n.step ? 'drops it without telling Claude; the Ship stops here' : 'drops it without telling Claude' },
+      })
     }
   }
   const open = rows.length
   const solved = needs.solved + hist.filter(x => x.outcome !== 'held' && x.outcome !== 'let through').length
-  if (open === 0) return { level: 'fine', sub: 'fine', subColor: DONE, phrase: `nothing waiting${solved ? ` · ${solved} solved this chat` : ' · a held command, a key to paste or a DNS record lands here'}`, rows, paste, buttons }
+  const tally = [solved ? `${solved} solved` : '', needs.dismissed ? `${needs.dismissed} dismissed` : ''].filter(Boolean).join(' · ')
+  if (open === 0) return { level: 'fine', sub: 'fine', subColor: DONE, phrase: `nothing waiting${tally ? ` · ${tally} this chat` : ' · a held command, a key to paste or a DNS record lands here'}`, rows, paste, buttons }
   const resumes = waiting ? 'Proceed or Cancel below' : ship.state === 'held' ? 'resumes the moment you press Done' : 'the rest is quiet'
   return { level: 'act', sub: 'act now', subColor: 'red', phrase: `${open} waiting · ${resumes}`, rows, paste, buttons }
 }
