@@ -4359,7 +4359,7 @@ async function startShip($: EngineInterface): Promise<void> {
   })
   await $.tool.register({
     name: 'handoff',
-    description: "File something only the person can do on the Cockpit Board's Needs you section: an API key to paste, a store form, a DNS record, a login, a payment. Give the exact page to open, the exact value to paste and why. The board shows Open, Do it in Chrome, Done and Dismiss buttons; the chat continues when the person presses Done. With done: true and the same title, clears the item instead (after you did it yourself in Chrome); a held Ship resumes.",
+    description: "File something only the person can do on the Cockpit Board's Needs you section: an API key to paste, a store form, a DNS record, a login, a payment. Give the exact page to open, the exact value to paste and why. The board shows Open, Do it in Chrome, Done and Dismiss buttons; the chat continues when the person presses Done. With done: true and the same title, clears the item instead (the person told you it is done); a held Ship resumes.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -4368,7 +4368,7 @@ async function startShip($: EngineInterface): Promise<void> {
         paste: { type: 'string', description: 'The exact value to paste there, verbatim.' },
         why: { type: 'string', description: 'What is waiting on it, one line.' },
         step: { type: 'integer', minimum: 1, maximum: 6, description: 'The ship step this holds, if any.' },
-        done: { type: 'boolean', description: 'true clears the item with this title from the board (you did it in Chrome, or the person told you it is done); a held Ship resumes.' },
+        done: { type: 'boolean', description: 'true clears the item with this title from the board (the person told you it is done); a held Ship resumes.' },
       },
       required: ['title'],
     },
@@ -4609,16 +4609,20 @@ async function pressDismiss($: EngineInterface, id: number): Promise<void> {
   if (item.step && ship.state === 'held' && ship.heldStep === item.step) shipReset()
   $.ui.invalidate('ui.render')
 }
-/** Do it in Chrome: asks Claude, in the person's words, to do the hand-off itself through Claude in Chrome. */
+/** Do it in Chrome: the row leaves the board at once, as Done does, and Claude is asked, in the
+ *  person's words, to do the hand-off itself through Claude in Chrome. What only the person can
+ *  do (a password, a card, a payment) comes back as a new hand-off. */
 async function pressChrome($: EngineInterface, id: number): Promise<void> {
   const item = needs.items.find(n => n.id === id)
   if (!item || !item.url) return
+  solveNeed(item)
+  $.ui.invalidate('ui.render')
   await $.prompt.submit({
     text:
       `Do this hand-off yourself with Claude in Chrome (the mcp__claude-in-chrome tools; load them with ToolSearch first): "${item.title}". ` +
       `Open ${item.url}${item.paste ? ` and enter this value where it belongs, verbatim: ${item.paste}` : ''}${item.why ? ` (${item.why})` : ''}. ` +
-      `Passwords, card numbers, government IDs and payments stay with me: if the page asks for one, stop there and say what is left for me to do. ` +
-      `When it is done, call ${HANDOFF_TOOL} with { title: "${item.title.replace(/"/g, "'")}", done: true } so the board clears it${item.step ? ` and the Ship resumes at step ${item.step}` : ''}.`,
+      `Passwords, card numbers, government IDs and payments stay with me: if the page asks for one, stop there and file that part again with ${HANDOFF_TOOL} so it lands on the board for me. ` +
+      `Then continue${item.step ? ` the ship from step ${item.step}` : ''}.`,
     asUser: true,
   })
 }
@@ -4687,7 +4691,7 @@ function needsView(waiting: boolean, heldNow: any, hist: Held[]): { level: Level
       rows.push({ k: `need:${n.id}`, mark: 'held', color: 'red', text: n.title, strong: true, tail: n.step ? `from Ship · step ${n.step}` : n.why ?? '' })
       if (n.paste) paste = `paste: ${n.paste}`
       if (n.url) buttons.push({ key: `need:${n.id}:open`, label: `Open ${hostOf(n.url)} ↗`, legend: n.paste ? 'opens the page (the value to paste goes to your clipboard too)' : n.why ?? 'opens the page', primary: true })
-      if (n.url) buttons.push({ key: `need:${n.id}:chrome`, label: 'Do it in Chrome ⇢', legend: 'asks Claude to do it in your Chrome (Claude in Chrome); logins, cards and payments stay yours' })
+      if (n.url) buttons.push({ key: `need:${n.id}:chrome`, label: 'Do it in Chrome ⇢', legend: 'hands it to Claude to do in your Chrome; logins, cards and payments come back to you' })
       buttons.push({
         key: `need:${n.id}:done`, label: 'Done ✓', legend: n.step ? `resumes Ship at step ${n.step}` : 'tells Claude it is done',
         pair: { key: `need:${n.id}:dismiss`, label: 'Dismiss ✕', legend: n.step ? 'drops it without telling Claude; the Ship stops here' : 'drops it without telling Claude' },

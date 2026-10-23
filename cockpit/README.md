@@ -105,9 +105,9 @@ in, each part separated by a thin line. Each section carries an icon and a colou
    is off since 3.16.1 (`CAUTION_ON` in `hooks/register.tsx` brings it back). A hand-off Claude files with `mcp__cockpit__handoff` (an API key to
    paste, a store form, a DNS record, a login, a payment) shows as a row with the value to paste
    under it and four buttons: **Open <site> ↗** (opens the page and puts the value on your
-   clipboard), **Do it in Chrome ⇢** (asks Claude to do it itself through Claude in Chrome;
-   passwords, cards, IDs and payments stay yours, and it clears the row with the handoff tool's
-   `done: true` when it is through), then **Done ✓** (tells Claude, and resumes a held Ship)
+   clipboard), **Do it in Chrome ⇢** (the row leaves the board at once and Claude does it itself
+   through Claude in Chrome; a password, a card or a payment comes back as a new row for you),
+   then **Done ✓** (tells Claude, and resumes a held Ship)
    beside **Dismiss ✕** (drops the row without a word; a Ship it held stops there). The wrong-folder nudge is a
    row here too: after three shell commands that `cd` into another project, **Move chat** moves
    the chat there once and **Not now** keeps it quiet for the session. With nothing waiting the

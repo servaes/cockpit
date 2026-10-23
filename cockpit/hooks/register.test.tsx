@@ -1536,7 +1536,7 @@ test('Dismiss beside Done drops a hand-off without a word, and a Ship it held st
   expect(text).toContain('nothing waiting · 1 dismissed this chat')
 })
 
-test('Do it in Chrome asks Claude to do the hand-off itself, and the tool with done clears it', async ($, on) => {
+test('Do it in Chrome clears the row at once, like Done, and asks Claude to do the hand-off itself', async ($, on) => {
   const entered: string[] = []
   const clock = world(on, { entered })
   await $.session.start(start)
@@ -1548,22 +1548,37 @@ test('Do it in Chrome asks Claude to do the hand-off itself, and the tool with d
   await clock.settle()
   let text = JSON.stringify(await ui.drawn())
   expect(text).toContain('"label":"Do it in Chrome ⇢"')
+  expect(text).toContain('held on step 5')
   await ui.press({ key: 'need:1:chrome' })
   await clock.settle()
   expect(entered.length).toBe(1)
   expect(entered[0]).toContain('Do this hand-off yourself with Claude in Chrome')
   expect(entered[0]).toContain('https://vercel.com/x/domains')
   expect(entered[0]).toContain('_vercel TXT vc-domain-verify=abc')
-  expect(entered[0]).toContain('{ title: "Verify pacto.life on Vercel", done: true }')
-  // the item waits until Claude reports it done
+  expect(entered[0]).toContain('file that part again with mcp__cockpit__handoff')
+  expect(entered[0]).toContain('the ship from step 5')
+  // the row is gone the moment it is pressed, and the Ship runs again
   text = JSON.stringify(await ui.drawn())
-  expect(text).toContain('Verify pacto.life on Vercel')
+  expect(text).not.toContain('Verify pacto.life on Vercel')
+  expect(text).not.toContain('held on step 5')
+  expect(text).toContain('1 solved this chat')
+})
+
+test('the handoff tool with done clears a waiting row by its title', async ($, on) => {
+  const clock = world(on, {})
+  await $.session.start(start)
+  await clock.settle()
+  await $.tool.call({ tool: 'mcp__cockpit__ship', step: 5, state: 'running' } as never)
+  await $.tool.call({ tool: 'mcp__cockpit__handoff', title: 'Verify pacto.life on Vercel', url: 'https://vercel.com/x/domains', step: 5 } as never)
+  await clock.settle()
+  const ui = await mount($, 'desktop')
+  await clock.settle()
   const miss = await $.tool.call({ tool: 'mcp__cockpit__handoff', title: 'Something else', done: true } as never)
   expect(String((miss as { result: string }).result)).toContain('nothing waiting called "Something else"')
   const hit = await $.tool.call({ tool: 'mcp__cockpit__handoff', title: 'verify pacto.life on vercel', done: true } as never)
   expect(JSON.stringify(hit)).toContain('runs again from step 5')
   await clock.settle()
-  text = JSON.stringify(await ui.drawn())
+  const text = JSON.stringify(await ui.drawn())
   expect(text).not.toContain('Verify pacto.life on Vercel')
   expect(text).not.toContain('held on step 5')
   expect(text).toContain('1 solved this chat')
