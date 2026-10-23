@@ -1512,6 +1512,34 @@ test('a hand-off lands in Needs you with Open and Done, and Done resumes the cha
   expect(text).toContain('1 solved this chat')
 })
 
+test('a nearly full context gets a Compact now button that runs /compact; a roomy one has none', async ($, on) => {
+  const ran: string[] = []
+  const clock = world(on, { usage: { ...USAGE, context: { tokens: 950_000, window: 1_000_000, percent: 95 } } })
+  on('command.run', { command: 'compact' }, async () => { ran.push('compact'); return {} as never })
+  await $.session.start(start)
+  await clock.settle()
+  const ui = await mount($, 'desktop')
+  await clock.settle()
+  const text = JSON.stringify(await ui.drawn())
+  expect(text).toContain('nearly full · press Compact now')
+  expect(text).toContain('"label":"✂ Compact now"')
+  expect(text).toContain('trims this chat to a summary and keeps going here (or Handoff now, under Cache, for a new chat)')
+  await ui.press({ key: 'context:compact' })
+  await clock.settle()
+  expect(ran).toEqual(['compact'])
+})
+
+test('a roomy context has no Compact now button (it comes with amber, at 50%)', async ($, on) => {
+  const clock = world(on, { usage: { ...USAGE, context: { tokens: 490_000, window: 1_000_000, percent: 49 } } })
+  await $.session.start(start)
+  await clock.settle()
+  const ui = await mount($, 'desktop')
+  await clock.settle()
+  const text = JSON.stringify(await ui.drawn())
+  expect(text).toContain('plenty of room')
+  expect(text).not.toContain('Compact now')
+})
+
 test('Dismiss beside Done drops a hand-off without a word, and a Ship it held stops there', async ($, on) => {
   const entered: string[] = []
   const clock = world(on, { entered })

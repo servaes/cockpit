@@ -513,6 +513,13 @@ async function drawCockpit($: EngineInterface, e: any, next: any): Promise<unkno
         }
       : { k: 'context', label: 'Context', sub: 'no reading' }
     const contextHint = f ? f.hint : "No reading yet. It shows after Claude's first reply."
+    // Once the card turns amber or red (watch, act) it has the button for what it says: Compact now
+    // trims this chat to a summary and keeps going here (Handoff now, under Cache, is the other way
+    // out: a new chat). Green has no button.
+    const ctxLevel = context ? contextLevel(context.percent).level : 'none'
+    const compactLegend = ctxLevel === 'watch' || ctxLevel === 'act'
+      ? `trims this chat to a summary and keeps going here${ctxLevel === 'act' ? ' (or Handoff now, under Cache, for a new chat)' : ''}`
+      : null
 
     // Usage: the session (5-hour) and week (7-day) windows, each with when it resets, how long
     // that is, and a one-line "so what" under its bar.
@@ -681,6 +688,7 @@ async function drawCockpit($: EngineInterface, e: any, next: any): Promise<unkno
           level: ctx ? ctx.level : 'none', phrase: ctx ? ctx.phrase : 'no reading yet',
           ...(context && ctx ? { value: `${Math.round(context.percent)}%`, bar: { pct: context.percent, color: LEVEL_COLOR[ctx.level], ticks: [50, 75, 90] }, aside: `${fmtTokens(context.tokens)} / ${fmtTokens(context.window)}${msgCost ? ` · ${msgCost}` : ''}` } : {}),
         }, `${say(contextRow)} ↳ ${contextHint}`),
+        ...(compactLegend ? [Action('context:compact', '✂ Compact now', compactLegend, () => void compactNow($), ctxLevel === 'act', CACHE_BUTTON_W)] : []),
         card('cache', {
           icon: 'cache', label: 'Cache', color: SECTION.Cache.color, level: cache.level, phrase: cache.phrase,
           ...(cache.row.pct ? { value: cache.row.pct } : {}),
@@ -759,6 +767,7 @@ async function drawCockpit($: EngineInterface, e: any, next: any): Promise<unkno
       Rule('rule:chat:under'),
       Row(contextRow),
       Hint('context:hint', contextHint),
+      ...(compactLegend ? [ButtonRow('context:compact', '✂ Compact now', compactLegend, () => void compactNow($), ctxLevel === 'act')] : []),
       Rule('rule:cache'),
       // Cache: warm or cold with the hour draining; the size and prices on their own line under it;
       // one button per row with its legend beside it (the legends carry the keepwarm and handoff state)
@@ -875,8 +884,8 @@ function clock24(iso: string): string {
 
 /** The context window on the board's scale. */
 function contextLevel(pct: number): { level: Level; phrase: string } {
-  if (pct >= 90) return { level: 'act', phrase: 'compact soon, save key facts' }
-  if (pct >= 75) return { level: 'watch', phrase: 'nearly full, wrap up' }
+  if (pct >= 90) return { level: 'act', phrase: 'nearly full · press Compact now' }
+  if (pct >= 75) return { level: 'watch', phrase: 'nearly full · compact, or wrap up' }
   if (pct >= 50) return { level: 'watch', phrase: 'filling up' }
   return { level: 'fine', phrase: 'plenty of room' }
 }
@@ -4584,6 +4593,15 @@ async function pressOpen($: EngineInterface, url: string, copyText?: string): Pr
     $.ui.toast(`Cockpit: could not open ${url}`)
   }
 }
+/** Compact now: runs /compact, as the person would; the Cache card follows the compaction. */
+async function compactNow($: EngineInterface): Promise<void> {
+  try {
+    await $.command.run({ command: 'compact' })
+  } catch (err) {
+    $.ui.toast(`✂ Compact failed: ${String(err)} · type /compact in the prompt`)
+  }
+}
+
 /** Takes a hand-off off the board as solved; a Ship held on its step runs again. */
 function solveNeed(item: Need): void {
   needs.items = needs.items.filter(n => n.id !== item.id)

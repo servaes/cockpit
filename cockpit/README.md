@@ -52,6 +52,9 @@ in, each part separated by a thin line. Each section carries an icon and a colou
    turn's calls summed: cache reads, cache writes and output) and `Next ≈ $Y` (the context
    read from the cache plus ~1k tokens out). Once the cache has gone cold (an hour since the
    last call) it reads `⚠ Next ≈ $Z`, the whole context written again at the cache-write rate.
+   Once the card turns amber or red a **✂ Compact now** button sits under it (none while green): it runs
+   `/compact` as you would type it, which trims this chat to a summary and keeps going here
+   (Handoff now, under Cache, is the other way out: a new chat).
    The prices come live from Anthropic's pricing page
    (`platform.claude.com/docs/en/about-claude/pricing.md`), read at session start and once a
    day; the `CACHE_PRICES` table in `register.tsx` is the fallback when it cannot be reached.
